@@ -22,6 +22,7 @@ Leave pins, draw on the page, highlight text, and have threaded conversations �
 - 👁️ **Presence** — viewer count shows how many people are on the page
 - 🔔 **Webhooks** — POST to any URL on new annotation or reply (Teams, Slack, Zapier…)
 - ⚠️ **Page-change awareness** — annotations flagged as outdated when the page content around them changes
+- ⌨️ **Keyboard shortcuts** — T = toolbar, P = pin, D = draw, H = highlight, A = annotations, Esc = cancel
 - 🔒 **Your data** — everything goes to your own Supabase project
 
 ---
@@ -67,6 +68,22 @@ That's it. A ✏️ button appears in the bottom-right corner.
 | `data-page-key` | `window.location.pathname` | Custom identifier for this page |
 | `data-position` | `bottom-right` | Toggle button corner: `bottom-right` or `bottom-left` |
 | `data-webhook-url` | *(none)* | URL to POST to on new annotation or reply |
+
+---
+
+## Keyboard Shortcuts
+
+Shortcuts are ignored when focus is in an input or textarea.
+
+| Key | Action |
+|-----|--------|
+| `T` | Toggle the toolbar panel open/closed |
+| `P` | Switch to pin mode |
+| `D` | Switch to draw mode |
+| `H` | Switch to highlight mode |
+| `A` | Toggle the annotations sidebar |
+| `Ctrl+Z` | Undo the last drawing stroke |
+| `Esc` | Cancel current action / close sidebar |
 
 ---
 

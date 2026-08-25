@@ -61,6 +61,16 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
+## v0.6.1–0.6.2 — Shortcuts & Polish ✓
+
+- [x] T = toggle toolbar panel
+- [x] A = toggle annotations sidebar
+- [x] Filters and annotation cards start collapsed
+- [x] ANNOTATIONS heading explicitly sans-serif
+- [x] Toolbar panel closes automatically when sidebar opens
+
+---
+
 ## Future Ideas
 
 - Email digest via Supabase Edge Function
