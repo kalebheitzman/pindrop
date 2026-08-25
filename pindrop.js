@@ -123,6 +123,8 @@
 }\
 .pd-tool:hover              { border-color: #4f46e5; color: #4f46e5; }\
 .pd-tool.pd-active        { background: #4f46e5; border-color: #4f46e5; color: white; }\
+.pd-key { display: inline-block; font-size: 9px; font-family: monospace; font-weight: 700; background: rgba(0,0,0,.07); border-radius: 3px; padding: 1px 4px; margin-left: 3px; color: inherit; opacity: .7; vertical-align: middle; line-height: 1.4; }\
+.pd-tool.pd-active .pd-key { background: rgba(255,255,255,.2); }\
 .pd-colors { display: flex; gap: 6px; flex-wrap: wrap; }\
 .pd-swatch {\
   width: 26px; height: 26px; border-radius: 50%; cursor: pointer;\
@@ -430,9 +432,9 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     // Tool buttons
     var toolLabel = mkEl('p', { class: 'pd-label' }); toolLabel.textContent = 'Tool';
     var toolRow = mkEl('div', { class: 'pd-tools' });
-    var pinBtn  = mkEl('button', { class: 'pd-tool', id: 'pd-pin-btn' });       pinBtn.textContent  = '📍 Pin';
-    var drawBtn = mkEl('button', { class: 'pd-tool', id: 'pd-draw-btn' });      drawBtn.textContent = '✏️ Draw';
-    var hlBtn   = mkEl('button', { class: 'pd-tool', id: 'pd-highlight-btn' }); hlBtn.textContent   = '🖍 Highlight';
+    var pinBtn  = mkEl('button', { class: 'pd-tool', id: 'pd-pin-btn',       title: 'Pin (P)'       }); pinBtn.innerHTML  = '📍 Pin <span class="pd-key">P</span>';
+    var drawBtn = mkEl('button', { class: 'pd-tool', id: 'pd-draw-btn',      title: 'Draw (D)'      }); drawBtn.innerHTML = '✏️ Draw <span class="pd-key">D</span>';
+    var hlBtn   = mkEl('button', { class: 'pd-tool', id: 'pd-highlight-btn', title: 'Highlight (H)' }); hlBtn.innerHTML   = '🖍 Highlight <span class="pd-key">H</span>';
     pinBtn.addEventListener('click',  function () { setMode('pin');       });
     drawBtn.addEventListener('click', function () { setMode('draw');      });
     hlBtn.addEventListener('click',   function () { setMode('highlight'); });
