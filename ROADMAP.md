@@ -36,14 +36,6 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
-## v0.3.1 — Real-time Polish
-
-- [ ] Cursor label shows active tool/color
-- [ ] Smooth cursor interpolation
-- [ ] Reconnect gracefully on network drop
-
----
-
 ## v0.4.0 — Notifications
 
 - [ ] Webhook support (ping a URL on new annotation or reply)
@@ -72,6 +64,9 @@ A living document tracking what's done, what's next, and what's planned.
 
 ## Future Ideas
 
+- Cursor label shows active tool/color
+- Smooth cursor interpolation
+- Reconnect gracefully on network drop
 - Attachments / screenshots on comments
 - Optional Supabase Auth for persistent identity across devices
 - Export annotations as PDF or CSV
