@@ -22,7 +22,7 @@ Leave pins, draw on the page, highlight text, and have threaded conversations �
 - 👁️ **Presence** — viewer count shows how many people are on the page
 - 🔔 **Webhooks** — POST to any URL on new annotation or reply (Teams, Slack, Zapier…)
 - ⚠️ **Page-change awareness** — annotations flagged as outdated when the page content around them changes
-- ⌨️ **Keyboard shortcuts** — T = toolbar, P = pin, D = draw, H = highlight, A = annotations, Esc = cancel
+- ⌨️ **Keyboard shortcuts** — T = toolbar, P = pin, D = draw, H = highlight, A = annotations, Shift+Enter = submit, Esc = cancel
 - 🔒 **Your data** — everything goes to your own Supabase project
 
 ---
@@ -83,6 +83,7 @@ Shortcuts are ignored when focus is in an input or textarea.
 | `H` | Switch to highlight mode |
 | `A` | Toggle the annotations sidebar |
 | `Ctrl+Z` | Undo the last drawing stroke |
+| `Shift+Enter` | Submit a comment or reply |
 | `Esc` | Cancel current action / close sidebar |
 
 ---

@@ -624,6 +624,9 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
 
     document.getElementById('pd-pop-submit').addEventListener('click', submitAnnotation);
     document.getElementById('pd-pop-cancel').addEventListener('click', cancelAnnotation);
+    document.getElementById('pd-pop-comment').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); submitAnnotation(); }
+    });
   }
 
   function showPopover(cx, cy, title) {
@@ -1657,6 +1660,9 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       submitBtn.addEventListener('click', function (e) {
         e.stopPropagation();
         submitReply(ann.id, nameEl, textEl, formEl, repliesEl);
+      });
+      textEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); submitReply(ann.id, nameEl, textEl, formEl, repliesEl); }
       });
 
       card.addEventListener('click', function () { jumpTo(ann); setFocus(ann.id); });
