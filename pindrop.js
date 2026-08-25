@@ -64,6 +64,13 @@
   var realtimeChannel = null; // Supabase Realtime channel
   var cursors       = {};     // token → { el, hideTimer }
 
+  // Sidebar filter/sort state
+  var sbFilterType   = null;      // null | 'pin' | 'drawing' | 'highlight'
+  var sbFilterStatus = null;      // null | 'open' | 'resolved'
+  var sbFilterAuthor = null;      // null | string
+  var sbSearch       = '';
+  var sbSort         = 'newest';  // 'newest' | 'oldest' | 'unresolved'
+
   // DOM refs
   var canvas, ctx, svgLayer;
 
@@ -246,6 +253,16 @@
   color: #94a3b8; font-size: 18px; padding: 2px; line-height: 1;\
 }\
 #pd-sb-close:hover { color: #475569; }\
+#pd-sb-filters { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; display: flex; flex-direction: column; gap: 7px; flex-shrink: 0; }\
+.pd-sb-search { width: 100%; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 6px 10px; font-size: 12px; outline: none; color: #1e1b4b; font-family: inherit; }\
+.pd-sb-search:focus { border-color: #4f46e5; }\
+.pd-sb-chips { display: flex; gap: 4px; flex-wrap: wrap; }\
+.pd-sb-chip { font-size: 11px; font-weight: 600; padding: 3px 9px; border: 1.5px solid #e2e8f0; border-radius: 20px; background: white; color: #64748b; cursor: pointer; transition: all .15s; font-family: inherit; }\
+.pd-sb-chip:hover { border-color: #4f46e5; color: #4f46e5; }\
+.pd-sb-chip.pd-active { background: #4f46e5; border-color: #4f46e5; color: white; }\
+.pd-sb-row { display: flex; gap: 6px; align-items: center; }\
+.pd-sb-select { font-size: 11px; font-weight: 600; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 3px 6px; color: #64748b; background: white; cursor: pointer; font-family: inherit; }\
+.pd-sb-select:focus { outline: none; border-color: #4f46e5; }\
 #pd-sb-list { flex: 1; overflow-y: auto; padding: 12px; }\
 #pd-sb-empty { text-align: center; padding: 48px 20px; color: #94a3b8; font-size: 13px; }\
 .pd-card {\
@@ -1221,12 +1238,75 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
         '</div>',
         '<button id="pd-sb-close">✕</button>',
       '</div>',
+      '<div id="pd-sb-filters">',
+        '<input id="pd-sb-search" class="pd-sb-search" type="text" placeholder="Search…">',
+        '<div class="pd-sb-chips" id="pd-sb-type-chips">',
+          '<button class="pd-sb-chip pd-active" data-type="">All</button>',
+          '<button class="pd-sb-chip" data-type="pin">📍 Pin</button>',
+          '<button class="pd-sb-chip" data-type="drawing">✏️ Draw</button>',
+          '<button class="pd-sb-chip" data-type="highlight">🖍 Hi</button>',
+        '</div>',
+        '<div class="pd-sb-row">',
+          '<div class="pd-sb-chips" id="pd-sb-status-chips">',
+            '<button class="pd-sb-chip pd-active" data-status="">All</button>',
+            '<button class="pd-sb-chip" data-status="open">Open</button>',
+            '<button class="pd-sb-chip" data-status="resolved">Resolved</button>',
+          '</div>',
+          '<select id="pd-sb-sort" class="pd-sb-select" style="margin-left:auto">',
+            '<option value="newest">Newest</option>',
+            '<option value="oldest">Oldest</option>',
+            '<option value="unresolved">Unresolved first</option>',
+          '</select>',
+        '</div>',
+        '<select id="pd-sb-author" class="pd-sb-select" style="width:100%">',
+          '<option value="">All authors</option>',
+        '</select>',
+      '</div>',
       '<div id="pd-sb-list">',
         '<div id="pd-sb-empty">No annotations on this page yet.</div>',
       '</div>',
     ].join('');
     document.body.appendChild(sb);
+
     document.getElementById('pd-sb-close').addEventListener('click', toggleSidebar);
+
+    // Search
+    document.getElementById('pd-sb-search').addEventListener('input', function () {
+      sbSearch = this.value.trim().toLowerCase();
+      renderSidebarList();
+    });
+
+    // Type chips
+    document.getElementById('pd-sb-type-chips').addEventListener('click', function (e) {
+      var btn = e.target.closest('.pd-sb-chip');
+      if (!btn) return;
+      this.querySelectorAll('.pd-sb-chip').forEach(function (b) { b.classList.remove('pd-active'); });
+      btn.classList.add('pd-active');
+      sbFilterType = btn.dataset.type || null;
+      renderSidebarList();
+    });
+
+    // Status chips
+    document.getElementById('pd-sb-status-chips').addEventListener('click', function (e) {
+      var btn = e.target.closest('.pd-sb-chip');
+      if (!btn) return;
+      this.querySelectorAll('.pd-sb-chip').forEach(function (b) { b.classList.remove('pd-active'); });
+      btn.classList.add('pd-active');
+      sbFilterStatus = btn.dataset.status || null;
+      renderSidebarList();
+    });
+
+    // Sort
+    document.getElementById('pd-sb-sort').addEventListener('change', function () {
+      sbSort = this.value;
+      renderSidebarList();
+    });
+
+    // Author
+    document.getElementById('pd-sb-author').addEventListener('change', function () {
+      sbFilterAuthor = this.value || null;
+      renderSidebarList();
+    });
   }
 
   function toggleSidebar() {
@@ -1301,12 +1381,56 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     list.querySelectorAll('.pd-card').forEach(function (c) { c.remove(); });
 
     if (!annotations.length) {
-      if (empty) empty.style.display = 'block';
+      if (empty) { empty.style.display = 'block'; empty.textContent = 'No annotations on this page yet.'; }
+      return;
+    }
+
+    // Rebuild author select (preserve current selection)
+    var authorSel = document.getElementById('pd-sb-author');
+    if (authorSel) {
+      var prevAuthor = authorSel.value;
+      var authors = {};
+      annotations.forEach(function (a) { if (a.author_name) authors[a.author_name] = true; });
+      authorSel.innerHTML = '<option value="">All authors</option>';
+      Object.keys(authors).sort().forEach(function (name) {
+        var opt = document.createElement('option');
+        opt.value = name; opt.textContent = name;
+        if (name === prevAuthor) opt.selected = true;
+        authorSel.appendChild(opt);
+      });
+    }
+
+    // Filter
+    var visible = annotations.filter(function (ann) {
+      if (sbFilterType   && ann.type !== sbFilterType) return false;
+      if (sbFilterStatus === 'open'     &&  ann.resolved) return false;
+      if (sbFilterStatus === 'resolved' && !ann.resolved) return false;
+      if (sbFilterAuthor && ann.author_name !== sbFilterAuthor) return false;
+      if (sbSearch) {
+        var hay = (ann.comment || '').toLowerCase();
+        var reps = (replies[ann.id] || []).map(function (r) { return (r.comment || '').toLowerCase(); }).join(' ');
+        if (hay.indexOf(sbSearch) === -1 && reps.indexOf(sbSearch) === -1) return false;
+      }
+      return true;
+    });
+
+    // Sort
+    var sorted = visible.slice().sort(function (a, b) {
+      if (sbSort === 'oldest')    return new Date(a.created_at) - new Date(b.created_at);
+      if (sbSort === 'unresolved') {
+        if (a.resolved !== b.resolved) return a.resolved ? 1 : -1;
+        return new Date(b.created_at) - new Date(a.created_at);
+      }
+      return new Date(b.created_at) - new Date(a.created_at); // newest
+    });
+
+    if (!sorted.length) {
+      if (empty) { empty.style.display = 'block'; empty.textContent = 'No annotations match your filters.'; }
       return;
     }
     if (empty) empty.style.display = 'none';
 
-    annotations.forEach(function (ann) {
+    sorted.forEach(function (ann) {
       var card    = mkEl('div', { class: 'pd-card', 'data-id': ann.id });
       var isPin   = ann.type === 'pin';
       var badgeLabel = isPin ? 'pd-badge-pin">Pin' : (ann.type === 'highlight' ? 'pd-badge-hl">Highlight' : 'pd-badge-draw">Drawing');

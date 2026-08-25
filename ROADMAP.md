@@ -43,13 +43,13 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
-## v0.5.0 — Sidebar Power-ups
+## v0.5.0 — Sidebar Power-ups ✓
 
-- [ ] Filter by type (pin / drawing / highlight)
-- [ ] Filter by status (open / resolved)
-- [ ] Filter by author
-- [ ] Search annotations by comment text
-- [ ] Sort by newest / oldest / unresolved first
+- [x] Filter by type (pin / drawing / highlight)
+- [x] Filter by status (open / resolved)
+- [x] Filter by author
+- [x] Search annotations by comment text
+- [x] Sort by newest / oldest / unresolved first
 
 ---
 
