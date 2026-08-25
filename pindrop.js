@@ -527,7 +527,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       author_token: MY_TOKEN,
     });
 
-    db.from('tcm_annotations').insert(record).select().single().then(function (result) {
+    db.from('pindrop_annotations').insert(record).select().single().then(function (result) {
       if (result.error) {
         console.error('[Pindrop] Save failed:', result.error);
         alert('Could not save — check the browser console.');
@@ -771,7 +771,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
 
   // ─── LOAD FROM SUPABASE ───────────────────────────────────────────────────
   function loadAnnotations() {
-    db.from('tcm_annotations')
+    db.from('pindrop_annotations')
       .select('*')
       .eq('page_url', PAGE_KEY)
       .order('created_at', { ascending: true })
@@ -787,7 +787,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
   function loadReplies() {
     if (!annotations.length) { renderSidebarList(); return; }
     var ids = annotations.map(function (a) { return a.id; });
-    db.from('tcm_replies')
+    db.from('pindrop_replies')
       .select('*')
       .in('annotation_id', ids)
       .order('created_at', { ascending: true })
@@ -810,7 +810,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     var submitBtn = formEl.querySelector('.pd-reply-submit');
     submitBtn.disabled = true;
     submitBtn.textContent = 'Saving…';
-    db.from('tcm_replies')
+    db.from('pindrop_replies')
       .insert({ annotation_id: annId, author_name: name, comment: text, author_token: MY_TOKEN })
       .select().single()
       .then(function (result) {
@@ -1053,7 +1053,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
 
   function toggleResolve(ann, btn, card) {
     var newState = !ann.resolved;
-    db.from('tcm_annotations').update({ resolved: newState }).eq('id', ann.id).then(function (result) {
+    db.from('pindrop_annotations').update({ resolved: newState }).eq('id', ann.id).then(function (result) {
       if (result.error) { console.error('[Pindrop] Resolve failed:', result.error); return; }
       ann.resolved = newState;
       btn.textContent = newState ? '✓ Resolved' : '✓ Resolve';
@@ -1071,7 +1071,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
   }
 
   function deleteAnnotation(ann, card) {
-    db.from('tcm_annotations').delete().eq('id', ann.id).then(function (result) {
+    db.from('pindrop_annotations').delete().eq('id', ann.id).then(function (result) {
       if (result.error) { console.error('[Pindrop] Delete failed:', result.error); return; }
       // Remove from arrays
       annotations = annotations.filter(function (a) { return a.id !== ann.id; });
