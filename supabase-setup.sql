@@ -48,4 +48,14 @@ create policy "public delete" on pindrop_annotations for delete using (true);
 
 create policy "public read"   on pindrop_replies for select using (true);
 create policy "public insert" on pindrop_replies for insert with check (true);
+create policy "public update" on pindrop_replies for update using (true) with check (true);
 create policy "public delete" on pindrop_replies for delete using (true);
+
+-- ─── Realtime ─────────────────────────────────────────────────────────────────
+-- Enable Realtime so live annotation feed, presence, and cursors work.
+alter publication supabase_realtime add table pindrop_annotations;
+alter publication supabase_realtime add table pindrop_replies;
+
+-- Full replica identity so UPDATE and DELETE events include the row id.
+alter table pindrop_annotations replica identity full;
+alter table pindrop_replies     replica identity full;
