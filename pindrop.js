@@ -59,6 +59,8 @@
   var tempPinSeq    = 0;      // for pins not yet saved
   var drawStrokes   = [];     // accumulated strokes in current drawing session
   var lastDrawVP    = null;   // last viewport coords of a completed stroke
+  var realtimeChannel = null; // Supabase Realtime channel
+  var cursors       = {};     // token → { el, hideTimer }
 
   // DOM refs
   var canvas, ctx, svgLayer;
@@ -77,6 +79,7 @@
       buildSidebar();
       buildNamePrompt();
       loadAnnotations();
+      setupRealtime();
       window.addEventListener('resize', function () {
         canvas.width  = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -396,6 +399,14 @@
 body.pd-pin-cursor, body.pd-pin-cursor * { cursor: crosshair !important; }\
 body.pd-draw-cursor #pd-canvas { cursor: crosshair; }\
 body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
+\
+/* ── Live cursors ── */\
+.pd-cursor { position: fixed; pointer-events: none; z-index: 10010; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; transform: translate(-2px, -2px); }\
+.pd-cursor-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 4px rgba(0,0,0,.3); flex-shrink: 0; }\
+.pd-cursor-name { font-size: 10px; font-weight: 700; background: rgba(15,15,15,.75); color: white; border-radius: 4px; padding: 1px 6px; white-space: nowrap; margin-left: 8px; }\
+\
+/* ── Viewer count ── */\
+#pd-viewers { display: none; font-size: 11px; color: #64748b; text-align: center; padding: 0; }\
 ';
     var style = document.createElement('style');
     style.textContent = css;
@@ -473,10 +484,11 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     viewBtn.textContent = '📋 View annotations (0)';
     viewBtn.addEventListener('click', toggleSidebar);
 
+    var viewersEl = mkEl('div', { id: 'pd-viewers' });
     [toolLabel, toolRow, mkEl('div', { class: 'pd-divider' }),
      colorLabel, colorRow,
      wLabel, wRow,
-     div1, viewBtn].forEach(function (node) { panel.appendChild(node); });
+     div1, viewersEl, viewBtn].forEach(function (node) { panel.appendChild(node); });
 
     root.appendChild(panel);
     document.body.appendChild(root);
@@ -921,6 +933,177 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       });
   }
 
+  // ─── REALTIME ─────────────────────────────────────────────────────────────
+  function setupRealtime() {
+    realtimeChannel = db.channel('pindrop:' + PAGE_KEY, {
+      config: { presence: { key: MY_TOKEN } }
+    });
+
+    // Annotation changes
+    realtimeChannel.on('postgres_changes', {
+      event: '*', schema: 'public', table: 'pindrop_annotations',
+      filter: 'page_url=eq.' + PAGE_KEY
+    }, function (payload) {
+      var ann, idx;
+      if (payload.eventType === 'INSERT') {
+        ann = payload.new;
+        if (annotations.some(function (a) { return a.id === ann.id; })) return;
+        annotations.push(ann);
+        renderAnnotation(ann);
+        updateCount();
+        renderSidebarList();
+      } else if (payload.eventType === 'UPDATE') {
+        ann = payload.new;
+        idx = -1;
+        annotations.forEach(function (a, i) { if (a.id === ann.id) idx = i; });
+        if (idx !== -1) {
+          annotations[idx] = ann;
+          removeAnnotationDOM(ann.id);
+          renderAnnotation(ann);
+          renderSidebarList();
+        }
+      } else if (payload.eventType === 'DELETE') {
+        var delId = payload.old && payload.old.id;
+        if (!delId) return;
+        annotations = annotations.filter(function (a) { return a.id !== delId; });
+        removeAnnotationDOM(delId);
+        updateCount();
+        renderSidebarList();
+      }
+    });
+
+    // Reply changes
+    realtimeChannel.on('postgres_changes', {
+      event: '*', schema: 'public', table: 'pindrop_replies'
+    }, function (payload) {
+      var r, list, repliesEl;
+      if (payload.eventType === 'INSERT') {
+        r = payload.new;
+        list = replies[r.annotation_id] || [];
+        if (list.some(function (x) { return x.id === r.id; })) return;
+        if (!replies[r.annotation_id]) replies[r.annotation_id] = [];
+        replies[r.annotation_id].push(r);
+        repliesEl = document.querySelector('.pd-replies[data-ann="' + r.annotation_id + '"]');
+        if (repliesEl) renderRepliesIn(repliesEl, r.annotation_id);
+      } else if (payload.eventType === 'UPDATE') {
+        r = payload.new;
+        list = replies[r.annotation_id] || [];
+        var ridx = -1;
+        list.forEach(function (x, i) { if (x.id === r.id) ridx = i; });
+        if (ridx !== -1) {
+          list[ridx] = r;
+          repliesEl = document.querySelector('.pd-replies[data-ann="' + r.annotation_id + '"]');
+          if (repliesEl) renderRepliesIn(repliesEl, r.annotation_id);
+        }
+      } else if (payload.eventType === 'DELETE') {
+        var dId = payload.old && payload.old.id;
+        if (!dId) return;
+        Object.keys(replies).forEach(function (annId) {
+          var before = replies[annId].length;
+          replies[annId] = replies[annId].filter(function (x) { return x.id !== dId; });
+          if (replies[annId].length !== before) {
+            repliesEl = document.querySelector('.pd-replies[data-ann="' + annId + '"]');
+            if (repliesEl) renderRepliesIn(repliesEl, annId);
+          }
+        });
+      }
+    });
+
+    // Presence — viewer count
+    realtimeChannel.on('presence', { event: 'sync' }, function () {
+      var state = realtimeChannel.presenceState();
+      updateViewerCount(Object.keys(state).length);
+    });
+
+    // Cursor broadcast — receive
+    realtimeChannel.on('broadcast', { event: 'cursor' }, function (payload) {
+      var d = payload.payload;
+      if (!d || d.token === MY_TOKEN) return;
+      updateCursor(d.token, d.x, d.y, d.name, d.color);
+    });
+    realtimeChannel.on('broadcast', { event: 'cursor_leave' }, function (payload) {
+      var d = payload.payload;
+      if (d && d.token) removeCursor(d.token);
+    });
+
+    realtimeChannel.subscribe(function (status) {
+      if (status !== 'SUBSCRIBED') return;
+      var myName = localStorage.getItem('pd_name') || 'Anonymous';
+      realtimeChannel.track({ name: myName, token: MY_TOKEN });
+    });
+
+    // Cursor broadcast — send (throttled to 50ms)
+    var cursorTimer = null;
+    var lastCx = 0, lastCy = 0;
+    document.addEventListener('mousemove', function (e) {
+      lastCx = e.clientX; lastCy = e.clientY;
+      if (cursorTimer) return;
+      cursorTimer = setTimeout(function () {
+        cursorTimer = null;
+        if (!realtimeChannel) return;
+        realtimeChannel.send({
+          type: 'broadcast', event: 'cursor',
+          payload: {
+            x: lastCx / window.innerWidth,
+            y: lastCy / window.innerHeight,
+            name: localStorage.getItem('pd_name') || 'Anonymous',
+            token: MY_TOKEN,
+            color: activeColor
+          }
+        });
+      }, 50);
+    });
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden && realtimeChannel) {
+        realtimeChannel.send({ type: 'broadcast', event: 'cursor_leave', payload: { token: MY_TOKEN } });
+      }
+    });
+  }
+
+  function removeAnnotationDOM(id) {
+    document.querySelectorAll('.pd-pin[data-id="' + id + '"]').forEach(function (el) { el.remove(); });
+    document.querySelectorAll('.pd-highlight[data-id="' + id + '"]').forEach(function (el) { el.remove(); });
+    svgLayer.querySelectorAll('[data-id="' + id + '"]').forEach(function (el) { el.remove(); });
+  }
+
+  function updateCursor(token, xPct, yPct, name, color) {
+    var el = document.getElementById('pd-cur-' + token);
+    if (!el) {
+      el = mkEl('div', { class: 'pd-cursor', id: 'pd-cur-' + token });
+      var dot = mkEl('div', { class: 'pd-cursor-dot' });
+      var label = mkEl('div', { class: 'pd-cursor-name' });
+      el.appendChild(dot);
+      el.appendChild(label);
+      document.body.appendChild(el);
+    }
+    var dot = el.querySelector('.pd-cursor-dot');
+    var label = el.querySelector('.pd-cursor-name');
+    if (dot) dot.style.background = color || '#4f46e5';
+    if (label) label.textContent = name || 'Someone';
+    el.style.left    = (xPct * window.innerWidth)  + 'px';
+    el.style.top     = (yPct * window.innerHeight) + 'px';
+    el.style.display = 'flex';
+    clearTimeout(cursors[token] && cursors[token].hideTimer);
+    cursors[token] = { el: el, hideTimer: setTimeout(function () { el.style.display = 'none'; }, 4000) };
+  }
+
+  function removeCursor(token) {
+    var c = cursors[token];
+    if (c) { clearTimeout(c.hideTimer); c.el.remove(); delete cursors[token]; }
+  }
+
+  function updateViewerCount(count) {
+    var el = document.getElementById('pd-viewers');
+    if (!el) return;
+    if (count > 1) {
+      el.textContent = '👁 ' + count + ' people viewing';
+      el.style.display = 'block';
+    } else {
+      el.style.display = 'none';
+    }
+  }
+
   function submitReply(annId, nameEl, textEl, formEl, repliesEl) {
     var name = nameEl.value.trim() || 'Anonymous';
     var text = textEl.value.trim();
@@ -1222,7 +1405,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       body.appendChild(actionsRow);
 
       // Replies section
-      var repliesEl = mkEl('div', { class: 'pd-replies' });
+      var repliesEl = mkEl('div', { class: 'pd-replies', 'data-ann': ann.id });
       renderRepliesIn(repliesEl, ann.id);
       body.appendChild(repliesEl);
 

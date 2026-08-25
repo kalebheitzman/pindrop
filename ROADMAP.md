@@ -28,11 +28,19 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
-## v0.3.0 — Real-time Collaboration
+## v0.3.0 — Real-time Collaboration ✓
 
-- [ ] Live annotation feed via Supabase Realtime subscriptions
-- [ ] See other users' cursors / annotations appear without refreshing
-- [ ] Presence indicator ("2 people viewing this page")
+- [x] Live annotation feed via Supabase Realtime subscriptions
+- [x] Presence indicator ("2 people viewing this page")
+- [x] Live cursors (useful for simultaneous video-call review sessions)
+
+---
+
+## v0.3.1 — Real-time Polish
+
+- [ ] Cursor label shows active tool/color
+- [ ] Smooth cursor interpolation
+- [ ] Reconnect gracefully on network drop
 
 ---
 
