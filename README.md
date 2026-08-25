@@ -3,7 +3,7 @@
 **Drop-in design annotation tool for any website.**  
 Leave pins, draw on the page, highlight text, and have threaded conversations — all wired to your own free Supabase database.
 
-![Pindrop in action](https://via.placeholder.com/800x400?text=Pindrop+screenshot)
+![Pindrop in action](screenshot.png)
 
 ---
 
@@ -101,4 +101,4 @@ Pindrop is a single self-contained JavaScript file with no build step and no fra
 
 ## License
 
-MIT
+MIT + Commons Clause — free to use on any project, but you may not sell Pindrop or a product whose value derives substantially from it.

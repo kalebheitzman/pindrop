@@ -2,6 +2,7 @@
  * PageNotes — drop-in design annotation tool
  * Pins · Freehand drawing · Text highlights · Threaded comments
  * Backed by Supabase (free tier works great).
+ * License: MIT + Commons Clause (free to use, not for resale)
  *
  * Usage — add one script tag to any page:
  *
