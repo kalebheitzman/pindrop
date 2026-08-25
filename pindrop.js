@@ -246,7 +246,7 @@
   padding: 20px 16px 14px; border-bottom: 1px solid #f1f5f9;\
   display: flex; align-items: flex-start; justify-content: space-between; flex-shrink: 0;\
 }\
-#pd-sb-head h3  { margin: 0; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: #1e1b4b; }\
+#pd-sb-head h3  { margin: 0; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: #1e1b4b; font-family: system-ui, -apple-system, sans-serif; }\
 #pd-sb-head p   { margin: 3px 0 0; font-size: 11px; color: #94a3b8; }\
 #pd-sb-close {\
   background: none; border: none; cursor: pointer;\
@@ -1245,7 +1245,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
         '</div>',
         '<button id="pd-sb-close">✕</button>',
       '</div>',
-      '<div id="pd-sb-filters">',
+      '<div id="pd-sb-filters" class="pd-collapsed">',
         '<div id="pd-sb-filters-head">',
           '<span>Filters</span>',
           '<span id="pd-sb-filters-chevron">▾</span>',
@@ -1328,7 +1328,18 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
   }
 
   function toggleSidebar() {
-    document.getElementById('pd-sidebar').classList.toggle('pd-open');
+    var sb      = document.getElementById('pd-sidebar');
+    var opening = !sb.classList.contains('pd-open');
+    sb.classList.toggle('pd-open');
+    if (opening) {
+      // Close the toolbar panel so it doesn't block the sidebar
+      var panel  = document.getElementById('pd-panel');
+      var toggle = document.getElementById('pd-toggle');
+      if (panel && panel.classList.contains('pd-open')) {
+        panel.classList.remove('pd-open');
+        if (toggle) toggle.classList.remove('pd-on');
+      }
+    }
   }
 
   function setFocus(annId) {
@@ -1449,7 +1460,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     if (empty) empty.style.display = 'none';
 
     sorted.forEach(function (ann) {
-      var card    = mkEl('div', { class: 'pd-card', 'data-id': ann.id });
+      var card    = mkEl('div', { class: 'pd-card pd-collapsed', 'data-id': ann.id });
       var isPin   = ann.type === 'pin';
       var badgeLabel = isPin ? 'pd-badge-pin">Pin' : (ann.type === 'highlight' ? 'pd-badge-hl">Highlight' : 'pd-badge-draw">Drawing');
       var badge   = '<span class="pd-badge ' + badgeLabel + '</span>';
