@@ -740,6 +740,8 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       if (e.key === 'p' || e.key === 'P') { setMode('pin'); return; }
       if (e.key === 'd' || e.key === 'D') { setMode('draw'); return; }
       if (e.key === 'h' || e.key === 'H') { setMode('highlight'); return; }
+      if (e.key === 't' || e.key === 'T') { togglePanel(); return; }
+      if (e.key === 'a' || e.key === 'A') { toggleSidebar(); return; }
     });
 
     // Pin clicks bubble up to document
