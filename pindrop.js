@@ -371,8 +371,8 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
   }
 
   // ─── TOOLBAR ─────────────────────────────────────────────────────────────
-  var COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#4f46e5', '#1e1b4b',
-                '#ec4899', '#06b6d4', '#3b82f6', '#a855f7', '#14b8a6', '#78716c'];
+  var COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#4f46e5',
+                '#1e1b4b', '#ec4899', '#06b6d4', '#3b82f6', '#a855f7'];
 
   function buildToolbar() {
     var root = mkEl('div', { id: 'pd-root' });
