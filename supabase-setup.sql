@@ -21,11 +21,14 @@ create table if not exists pindrop_annotations (
                                  -- highlights: [{x,y,w,h,sel?}…]
 
   -- Common
-  comment      text,
-  author_name  text        not null default 'Anonymous',
-  author_token text,             -- random localStorage token for delete ownership
-  resolved     boolean     not null default false,
-  created_at   timestamptz not null default now()
+  comment         text,
+  author_name     text        not null default 'Anonymous',
+  author_token    text,             -- random localStorage token for delete ownership
+  resolved        boolean     not null default false,
+  created_at      timestamptz not null default now(),
+
+  -- v0.6.0 — Page-change Awareness
+  dom_fingerprint text              -- DOM context snapshot; compared on load to flag stale annotations
 );
 
 create table if not exists pindrop_replies (
@@ -59,3 +62,7 @@ alter publication supabase_realtime add table pindrop_replies;
 -- Full replica identity so UPDATE and DELETE events include the row id.
 alter table pindrop_annotations replica identity full;
 alter table pindrop_replies     replica identity full;
+
+-- ─── Migration: v0.6.0 (run if upgrading an existing install) ────────────────
+-- Safe to run on a fresh install too — IF NOT EXISTS guards the column add.
+alter table pindrop_annotations add column if not exists dom_fingerprint text;

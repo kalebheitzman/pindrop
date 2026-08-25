@@ -21,6 +21,7 @@ Leave pins, draw on the page, highlight text, and have threaded conversations �
 - 🔴 **Live cursors** — see other reviewers' cursors in real time
 - 👁️ **Presence** — viewer count shows how many people are on the page
 - 🔔 **Webhooks** — POST to any URL on new annotation or reply (Teams, Slack, Zapier…)
+- ⚠️ **Page-change awareness** — annotations flagged as outdated when the page content around them changes
 - 🔒 **Your data** — everything goes to your own Supabase project
 
 ---
@@ -30,6 +31,11 @@ Leave pins, draw on the page, highlight text, and have threaded conversations �
 ### 1. Create your Supabase table
 
 Go to your [Supabase](https://supabase.com) project → SQL Editor → paste and run `supabase-setup.sql`.
+
+> **Upgrading from v0.5.x?** Run this one-liner in the SQL Editor to add the new column:
+> ```sql
+> alter table pindrop_annotations add column if not exists dom_fingerprint text;
+> ```
 
 ### 2. Get your credentials
 
@@ -96,6 +102,8 @@ Pindrop is a single self-contained JavaScript file with no build step and no fra
 **Anonymous ownership** — on first visit a random token is generated and stored in `localStorage`. This token is saved with every annotation you create, and the Delete button only appears on annotations that match your token.
 
 **Element anchoring** — pins store a CSS selector path to the DOM element they were placed on, plus a percentage offset within that element. On resize or reload, the pin repositions itself relative to the element rather than using absolute pixel coordinates.
+
+**Page-change awareness** — when an annotation is created, Pindrop captures a lightweight DOM fingerprint: the text content of the pinned element, the highlighted text, or the page title/heading for drawings. On every load it recomputes the fingerprint and compares it to the stored value. If they differ — the element's text changed, the highlighted passage was removed, or the heading was renamed — the annotation is marked with a ⚠ Outdated badge in the sidebar so reviewers know the feedback may no longer apply to that exact spot.
 
 ---
 

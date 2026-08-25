@@ -74,6 +74,45 @@
   // DOM refs
   var canvas, ctx, svgLayer;
 
+  // ─── DOM FINGERPRINT ─────────────────────────────────────────────────────
+  /**
+   * Compute a short fingerprint of the DOM context around an annotation.
+   * Stored at creation time; compared on load to detect page structure changes.
+   *   pin      → anchored element tagName + textContent (first 200 chars)
+   *   highlight → selected text (checked for existence in body text)
+   *   drawing  → page title + first <h1> text
+   */
+  function computeFingerprint(ann) {
+    try {
+      if (ann.type === 'pin') {
+        if (!ann.anchor || !ann.anchor.selector) return null;
+        var el = document.querySelector(ann.anchor.selector);
+        if (!el) return '__element_missing__';
+        return el.tagName + '|' + el.textContent.trim().slice(0, 200);
+      }
+      if (ann.type === 'highlight') {
+        var sel = ann.paths && ann.paths[0] && ann.paths[0].sel;
+        if (!sel) return null;
+        var bodyText = document.body ? (document.body.innerText || '') : '';
+        return bodyText.indexOf(sel) !== -1 ? sel : '__text_missing__';
+      }
+      if (ann.type === 'drawing') {
+        var h1 = document.querySelector('h1');
+        return 'draw|' + document.title + '|' + (h1 ? h1.textContent.trim().slice(0, 100) : '');
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  /** Mark annotations outdated where the stored fingerprint no longer matches. */
+  function checkFingerprints() {
+    annotations.forEach(function (ann) {
+      if (!ann.dom_fingerprint) { ann.outdated = false; return; }
+      var current = computeFingerprint(ann);
+      ann.outdated = (current !== null && current !== ann.dom_fingerprint);
+    });
+  }
+
   // ─── WEBHOOK ─────────────────────────────────────────────────────────────
   function fireWebhook(payload) {
     if (!WEBHOOK_URL) return;
@@ -299,6 +338,7 @@
 }\
 .pd-card-author { font-size: 12px; font-weight: 700; color: #334155; }\
 .pd-card-time   { font-size: 11px; color: #94a3b8; margin-left: auto; }\
+.pd-outdated-badge { font-size: 10px; font-weight: 700; color: #b45309; background: #fef3c7; border: 1.5px solid #fcd34d; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }\
 .pd-card-comment { font-size: 13px; color: #475569; }\
 .pd-card-empty   { font-size: 12px; color: #94a3b8; font-style: italic; }\
 \
@@ -613,10 +653,11 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     localStorage.setItem('pd_name', name);
 
     var record = Object.assign({}, pending.data, {
-      page_url:     PAGE_KEY,
-      author_name:  name,
-      comment:      comment || null,
-      author_token: MY_TOKEN,
+      page_url:        PAGE_KEY,
+      author_name:     name,
+      comment:         comment || null,
+      author_token:    MY_TOKEN,
+      dom_fingerprint: computeFingerprint(pending.data),
     });
 
     db.from('pindrop_annotations').insert(record).select().single().then(function (result) {
@@ -948,6 +989,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       .then(function (result) {
         if (result.error) { console.error('[Pindrop] Load failed:', result.error); return; }
         annotations = result.data || [];
+        checkFingerprints();
         annotations.forEach(renderAnnotation);
         updateCount();
         loadReplies();
@@ -1479,6 +1521,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
         badge +
         '<span class="pd-card-author">' + esc(ann.author_name || 'Anonymous') + '</span>' +
         '<span class="pd-card-time">'   + t + '</span>' +
+        (ann.outdated ? '<span class="pd-outdated-badge">⚠ Outdated</span>' : '') +
         '<span class="pd-card-chevron">▾</span>';
       header.addEventListener('click', function (e) {
         e.stopPropagation();

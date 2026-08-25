@@ -53,11 +53,11 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
-## v0.6.0 — Page-change Awareness
+## v0.6.0 — Page-change Awareness ✓
 
-- [ ] Store a lightweight DOM fingerprint with each annotation
-- [ ] Flag annotations as "may be outdated" when the page structure changes
-- [ ] Show diff indicator in the sidebar card
+- [x] Store a lightweight DOM fingerprint with each annotation
+- [x] Flag annotations as "may be outdated" when the page structure changes
+- [x] Show ⚠ Outdated badge in the sidebar card header
 
 ---
 
