@@ -20,11 +20,11 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
-## v0.2.0 — Edit & Undo
+## v0.2.x — Edit & Undo ✓
 
-- [ ] Edit a comment or reply after posting
-- [ ] Drawing undo (Ctrl+Z removes last stroke)
-- [ ] Keyboard shortcuts (P = pin, D = draw, H = highlight, Esc = cancel)
+- [x] Edit a comment or reply after posting
+- [x] Drawing undo (Ctrl+Z removes last stroke)
+- [x] Keyboard shortcuts (P = pin, D = draw, H = highlight, Esc = cancel)
 
 ---
 
