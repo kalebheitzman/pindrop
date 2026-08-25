@@ -36,11 +36,10 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
-## v0.4.0 — Notifications
+## v0.4.0 — Notifications ✓
 
-- [ ] Webhook support (ping a URL on new annotation or reply)
-- [ ] Slack integration (post to a channel when feedback is left)
-- [ ] Email digest via Supabase Edge Function
+- [x] Webhook support (`data-webhook-url` — fires on new annotation or reply)
+- [x] Works with Teams, Slack, Discord, Zapier, Make, n8n, or any URL
 
 ---
 
@@ -64,6 +63,7 @@ A living document tracking what's done, what's next, and what's planned.
 
 ## Future Ideas
 
+- Email digest via Supabase Edge Function
 - Cursor label shows active tool/color
 - Smooth cursor interpolation
 - Reconnect gracefully on network drop

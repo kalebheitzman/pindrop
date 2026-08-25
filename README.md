@@ -10,13 +10,17 @@ Leave pins, draw on the page, highlight text, and have threaded conversations �
 ## Features
 
 - 📍 **Pins** — click anywhere to drop a numbered pin with a comment
-- ✏️ **Freehand drawing** — draw directly on the page
+- ✏️ **Freehand drawing** — draw directly on the page (multi-stroke, Ctrl+Z to undo)
 - 🖍️ **Text highlights** — select any text to highlight and annotate it
 - 💬 **Threaded replies** — comment on any annotation
+- ✏️ **Edit** — update your own comments and replies inline
 - ✓ **Resolve** — mark feedback as done; resolved items collapse automatically
 - 🗑️ **Delete** — anonymous ownership via localStorage token
 - 🎯 **Focus mode** — click any annotation to dim everything else
 - 📐 **Element anchoring** — pins reposition correctly across screen sizes
+- 🔴 **Live cursors** — see other reviewers' cursors in real time
+- 👁️ **Presence** — viewer count shows how many people are on the page
+- 🔔 **Webhooks** — POST to any URL on new annotation or reply (Teams, Slack, Zapier…)
 - 🔒 **Your data** — everything goes to your own Supabase project
 
 ---
@@ -37,7 +41,7 @@ In Supabase: **Settings → API**
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/gh/kaleb-tcm/pindrop/pindrop.min.js"
+  src="https://cdn.jsdelivr.net/gh/kalebheitzman/pindrop/pindrop.min.js"
   data-supabase-url="https://YOUR_PROJECT_ID.supabase.co"
   data-supabase-key="eyJ..."
   defer
@@ -56,6 +60,32 @@ That's it. A ✏️ button appears in the bottom-right corner.
 | `data-supabase-key` | *(required)* | Your Supabase anon/public key |
 | `data-page-key` | `window.location.pathname` | Custom identifier for this page |
 | `data-position` | `bottom-right` | Toggle button corner: `bottom-right` or `bottom-left` |
+| `data-webhook-url` | *(none)* | URL to POST to on new annotation or reply |
+
+---
+
+## Webhooks
+
+Add `data-webhook-url` to your script tag and Pindrop will POST a JSON payload to that URL whenever an annotation or reply is created. Works with Microsoft Teams (Power Automate), Slack, Discord, Zapier, Make, n8n, or any endpoint that accepts a POST.
+
+**Annotation payload:**
+```json
+{
+  "event": "annotation.created",
+  "page_url": "/some/path",
+  "annotation": { "id": "...", "type": "pin", "comment": "...", "author_name": "...", ... }
+}
+```
+
+**Reply payload:**
+```json
+{
+  "event": "reply.created",
+  "page_url": "/some/path",
+  "annotation_id": "...",
+  "reply": { "id": "...", "comment": "...", "author_name": "...", ... }
+}
+```
 
 ---
 

@@ -26,6 +26,7 @@
   var PAGE_KEY          = (_self && _self.getAttribute('data-page-key')) ||
                           window.location.pathname;
   var POSITION          = (_self && _self.getAttribute('data-position')) || 'bottom-right';
+  var WEBHOOK_URL       = (_self && _self.getAttribute('data-webhook-url')) || null;
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     console.warn('[PageNotes] Missing data-supabase-url or data-supabase-key on <script> tag — not loading.');
@@ -64,6 +65,18 @@
 
   // DOM refs
   var canvas, ctx, svgLayer;
+
+  // ─── WEBHOOK ─────────────────────────────────────────────────────────────
+  function fireWebhook(payload) {
+    if (!WEBHOOK_URL) return;
+    fetch(WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch(function (err) {
+      console.warn('[Pindrop] Webhook delivery failed:', err);
+    });
+  }
 
   // ─── BOOT ────────────────────────────────────────────────────────────────
   function boot() {
@@ -597,6 +610,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       updateCount();
       renderSidebarList();
       hidePopover();
+      fireWebhook({ event: 'annotation.created', page_url: PAGE_KEY, annotation: result.data });
     });
   }
 
@@ -1124,6 +1138,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
         textEl.value = '';
         formEl.classList.remove('pd-open');
         renderRepliesIn(repliesEl, annId);
+        fireWebhook({ event: 'reply.created', page_url: PAGE_KEY, annotation_id: annId, reply: result.data });
       });
   }
 
