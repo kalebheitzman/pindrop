@@ -246,14 +246,21 @@
   padding: 20px 16px 14px; border-bottom: 1px solid #f1f5f9;\
   display: flex; align-items: flex-start; justify-content: space-between; flex-shrink: 0;\
 }\
-#pd-sb-head h3  { margin: 0; font-size: 15px; font-weight: 800; color: #1e1b4b; }\
+#pd-sb-head h3  { margin: 0; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: #1e1b4b; }\
 #pd-sb-head p   { margin: 3px 0 0; font-size: 11px; color: #94a3b8; }\
 #pd-sb-close {\
   background: none; border: none; cursor: pointer;\
   color: #94a3b8; font-size: 18px; padding: 2px; line-height: 1;\
 }\
 #pd-sb-close:hover { color: #475569; }\
-#pd-sb-filters { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; display: flex; flex-direction: column; gap: 7px; flex-shrink: 0; }\
+#pd-sb-filters { margin: 12px 12px 0; background: #f8fafc; border-radius: 10px; border: 1.5px solid transparent; flex-shrink: 0; transition: border-color .15s; }\
+#pd-sb-filters:hover { border-color: #e2e8f0; }\
+#pd-sb-filters-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 13px; cursor: pointer; user-select: none; }\
+#pd-sb-filters-head span:first-child { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: #1e1b4b; }\
+#pd-sb-filters-chevron { font-size: 11px; color: #94a3b8; transition: transform .2s; }\
+#pd-sb-filters.pd-collapsed #pd-sb-filters-chevron { transform: rotate(-90deg); }\
+#pd-sb-filters-body { padding: 0 13px 12px; display: flex; flex-direction: column; gap: 7px; }\
+#pd-sb-filters.pd-collapsed #pd-sb-filters-body { display: none; }\
 .pd-sb-search { width: 100%; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 6px 10px; font-size: 12px; outline: none; color: #1e1b4b; font-family: inherit; }\
 .pd-sb-search:focus { border-color: #4f46e5; }\
 .pd-sb-chips { display: flex; gap: 4px; flex-wrap: wrap; }\
@@ -1239,28 +1246,34 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
         '<button id="pd-sb-close">✕</button>',
       '</div>',
       '<div id="pd-sb-filters">',
-        '<input id="pd-sb-search" class="pd-sb-search" type="text" placeholder="Search…">',
-        '<div class="pd-sb-chips" id="pd-sb-type-chips">',
-          '<button class="pd-sb-chip pd-active" data-type="">All</button>',
-          '<button class="pd-sb-chip" data-type="pin">📍 Pin</button>',
-          '<button class="pd-sb-chip" data-type="drawing">✏️ Draw</button>',
-          '<button class="pd-sb-chip" data-type="highlight">🖍 Hi</button>',
+        '<div id="pd-sb-filters-head">',
+          '<span>Filters</span>',
+          '<span id="pd-sb-filters-chevron">▾</span>',
         '</div>',
-        '<div class="pd-sb-row">',
-          '<div class="pd-sb-chips" id="pd-sb-status-chips">',
-            '<button class="pd-sb-chip pd-active" data-status="">All</button>',
-            '<button class="pd-sb-chip" data-status="open">Open</button>',
-            '<button class="pd-sb-chip" data-status="resolved">Resolved</button>',
+        '<div id="pd-sb-filters-body">',
+          '<input id="pd-sb-search" class="pd-sb-search" type="text" placeholder="Search…">',
+          '<div class="pd-sb-chips" id="pd-sb-type-chips">',
+            '<button class="pd-sb-chip pd-active" data-type="">All</button>',
+            '<button class="pd-sb-chip" data-type="pin">📍 Pin</button>',
+            '<button class="pd-sb-chip" data-type="drawing">✏️ Draw</button>',
+            '<button class="pd-sb-chip" data-type="highlight">🖍 Hi</button>',
           '</div>',
-          '<select id="pd-sb-sort" class="pd-sb-select" style="margin-left:auto">',
-            '<option value="newest">Newest</option>',
-            '<option value="oldest">Oldest</option>',
-            '<option value="unresolved">Unresolved first</option>',
+          '<div class="pd-sb-row">',
+            '<div class="pd-sb-chips" id="pd-sb-status-chips">',
+              '<button class="pd-sb-chip pd-active" data-status="">All</button>',
+              '<button class="pd-sb-chip" data-status="open">Open</button>',
+              '<button class="pd-sb-chip" data-status="resolved">Resolved</button>',
+            '</div>',
+            '<select id="pd-sb-sort" class="pd-sb-select" style="margin-left:auto">',
+              '<option value="newest">Newest</option>',
+              '<option value="oldest">Oldest</option>',
+              '<option value="unresolved">Unresolved first</option>',
+            '</select>',
+          '</div>',
+          '<select id="pd-sb-author" class="pd-sb-select" style="width:100%">',
+            '<option value="">All authors</option>',
           '</select>',
         '</div>',
-        '<select id="pd-sb-author" class="pd-sb-select" style="width:100%">',
-          '<option value="">All authors</option>',
-        '</select>',
       '</div>',
       '<div id="pd-sb-list">',
         '<div id="pd-sb-empty">No annotations on this page yet.</div>',
@@ -1269,6 +1282,11 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     document.body.appendChild(sb);
 
     document.getElementById('pd-sb-close').addEventListener('click', toggleSidebar);
+
+    // Filters toggle
+    document.getElementById('pd-sb-filters-head').addEventListener('click', function () {
+      document.getElementById('pd-sb-filters').classList.toggle('pd-collapsed');
+    });
 
     // Search
     document.getElementById('pd-sb-search').addEventListener('input', function () {
