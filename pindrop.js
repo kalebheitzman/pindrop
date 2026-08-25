@@ -57,6 +57,8 @@
   var pinSeqMap     = {};     // ann.id → display number
   var pinSeqNext    = 0;
   var tempPinSeq    = 0;      // for pins not yet saved
+  var drawStrokes   = [];     // accumulated strokes in current drawing session
+  var lastDrawVP    = null;   // last viewport coords of a completed stroke
 
   // DOM refs
   var canvas, ctx, svgLayer;
@@ -351,6 +353,45 @@
   transition: opacity .2s;\
 }\
 \
+/* ── Draw done button ── */\
+#pd-draw-done {\
+  position: fixed; z-index: 10005;\
+  background: #4f46e5; color: white; border: none; border-radius: 9px;\
+  padding: 8px 16px; font-size: 13px; font-weight: 700; cursor: pointer;\
+  box-shadow: 0 4px 16px rgba(79,70,229,.4); display: none;\
+  animation: pd-slide-up .18s ease;\
+}\
+#pd-draw-done.pd-visible { display: block; }\
+#pd-draw-done:hover { background: #4338ca; }\
+\
+/* ── Inline edit ── */\
+.pd-edit-btn {\
+  background: none; border: none; cursor: pointer;\
+  font-size: 11px; color: #94a3b8; padding: 0 4px; transition: color .15s;\
+}\
+.pd-edit-btn:hover { color: #4f46e5; }\
+.pd-inline-edit { margin-top: 4px; }\
+.pd-inline-edit textarea {\
+  width: 100%; border: 1.5px solid #4f46e5; border-radius: 7px;\
+  padding: 7px 9px; font-size: 13px; color: #1e293b; outline: none;\
+  font-family: system-ui, sans-serif; resize: vertical; min-height: 52px;\
+  margin-bottom: 6px; box-sizing: border-box;\
+}\
+.pd-inline-edit-btns { display: flex; gap: 6px; }\
+.pd-inline-edit-btns button {\
+  flex: 1; padding: 5px; border: none; border-radius: 7px;\
+  font-size: 12px; font-weight: 700; cursor: pointer;\
+}\
+.pd-inline-save   { background: #4f46e5; color: white; }\
+.pd-inline-cancel { background: #f1f5f9; color: #475569; }\
+\
+/* ── Reply edit ── */\
+.pd-reply-edit-btn {\
+  background: none; border: none; cursor: pointer;\
+  font-size: 10px; color: #94a3b8; padding: 0 2px; transition: color .15s;\
+}\
+.pd-reply-edit-btn:hover { color: #4f46e5; }\
+\
 /* ── Body cursor overrides ── */\
 body.pd-pin-cursor, body.pd-pin-cursor * { cursor: crosshair !important; }\
 body.pd-draw-cursor #pd-canvas { cursor: crosshair; }\
@@ -535,6 +576,9 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
         return;
       }
       if (pending && pending.tempPin) pending.tempPin.remove();
+      drawStrokes   = [];
+      currentPoints = [];
+      lastDrawVP    = null;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       annotations.push(result.data);
       renderAnnotation(result.data);
@@ -549,9 +593,12 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       pending.tempPin.remove();
       tempPinSeq = Math.max(0, tempPinSeq - 1);
     }
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawStrokes   = [];
     currentPoints = [];
-    isDrawing = false;
+    isDrawing     = false;
+    lastDrawVP    = null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hideDrawDoneBtn();
     hidePopover();
   }
 
@@ -563,10 +610,45 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     ctx = canvas.getContext('2d');
     document.body.appendChild(canvas);
 
+    // Done button for multi-stroke drawings
+    var doneBtn = mkEl('button', { id: 'pd-draw-done' });
+    doneBtn.textContent = '✓ Done';
+    doneBtn.addEventListener('click', function (e) { e.stopPropagation(); confirmDrawing(); });
+    document.body.appendChild(doneBtn);
+
     canvas.addEventListener('mousedown',  onDrawStart);
     canvas.addEventListener('mousemove',  onDrawMove);
     canvas.addEventListener('mouseup',    onDrawEnd);
     canvas.addEventListener('mouseleave', function (e) { if (isDrawing) onDrawEnd(e); });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function (e) {
+      var tag = (document.activeElement && document.activeElement.tagName) || '';
+      var inInput = tag === 'INPUT' || tag === 'TEXTAREA';
+      if (e.key === 'Escape') {
+        if (document.getElementById('pd-pop').classList.contains('pd-open')) {
+          cancelAnnotation(); return;
+        }
+        if (drawStrokes.length) { cancelAnnotation(); return; }
+        var sb = document.getElementById('pd-sidebar');
+        if (sb && sb.classList.contains('pd-open')) { toggleSidebar(); return; }
+        setMode(null);
+        return;
+      }
+      if (inInput) return;
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        if (drawStrokes.length) {
+          e.preventDefault();
+          drawStrokes.pop();
+          if (drawStrokes.length === 0) { hideDrawDoneBtn(); lastDrawVP = null; }
+          redrawCanvas();
+        }
+        return;
+      }
+      if (e.key === 'p' || e.key === 'P') { setMode('pin'); return; }
+      if (e.key === 'd' || e.key === 'D') { setMode('draw'); return; }
+      if (e.key === 'h' || e.key === 'H') { setMode('highlight'); return; }
+    });
 
     // Pin clicks bubble up to document
     document.addEventListener('click', function (e) {
@@ -628,20 +710,56 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     if (!isDrawing || mode !== 'draw') return;
     isDrawing = false;
     if (currentPoints.length < 4) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
       currentPoints = [];
+      redrawCanvas();
       return;
     }
-    var lastPt = currentPoints[currentPoints.length - 1];
-    var vpX = lastPt.x - window.scrollX;
-    var vpY = lastPt.y - window.scrollY;
-    pending = {
-      data: {
-        type:  'drawing',
-        paths: [{ points: currentPoints.slice(), color: activeColor, width: activeWidth }],
-      }
-    };
-    showPopover(vpX, vpY, 'Add a comment (optional)');
+    drawStrokes.push({ points: currentPoints.slice(), color: activeColor, width: activeWidth });
+    currentPoints = [];
+    var lastPt = drawStrokes[drawStrokes.length - 1].points.slice(-1)[0];
+    lastDrawVP = { x: lastPt.x - window.scrollX, y: lastPt.y - window.scrollY };
+    redrawCanvas();
+    showDrawDoneBtn();
+  }
+
+  function redrawCanvas() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawStrokes.forEach(function (s) {
+      ctx.beginPath();
+      s.points.forEach(function (pt, i) {
+        var vx = pt.x - window.scrollX;
+        var vy = pt.y - window.scrollY;
+        if (i === 0) ctx.moveTo(vx, vy); else ctx.lineTo(vx, vy);
+      });
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth   = s.width;
+      ctx.lineCap     = 'round';
+      ctx.lineJoin    = 'round';
+      ctx.stroke();
+    });
+  }
+
+  function showDrawDoneBtn() {
+    var btn = document.getElementById('pd-draw-done');
+    if (!btn) return;
+    btn.classList.add('pd-visible');
+    if (lastDrawVP) {
+      btn.style.left = Math.min(lastDrawVP.x + 14, window.innerWidth - 120) + 'px';
+      btn.style.top  = Math.max(lastDrawVP.y - 44, 10) + 'px';
+    }
+  }
+
+  function hideDrawDoneBtn() {
+    var btn = document.getElementById('pd-draw-done');
+    if (btn) btn.classList.remove('pd-visible');
+  }
+
+  function confirmDrawing() {
+    if (!drawStrokes.length) return;
+    pending = { data: { type: 'drawing', paths: drawStrokes.slice() } };
+    hideDrawDoneBtn();
+    var vp = lastDrawVP || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    showPopover(vp.x, vp.y, 'Add a comment (optional)');
   }
 
   function applyCtxStyle() {
@@ -832,12 +950,63 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     list.forEach(function (r) {
       var item = mkEl('div', { class: 'pd-reply-item' });
       var t = new Date(r.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-      item.innerHTML =
-        '<div class="pd-reply-meta">' +
-          '<span class="pd-reply-author">' + esc(r.author_name || 'Anonymous') + '</span>' +
-          '<span class="pd-reply-time">'   + t + '</span>' +
-        '</div>' +
-        '<div class="pd-reply-text">' + esc(r.comment) + '</div>';
+
+      var meta = mkEl('div', { class: 'pd-reply-meta' });
+      var authorSpan = mkEl('span', { class: 'pd-reply-author' }); authorSpan.textContent = r.author_name || 'Anonymous';
+      var timeSpan   = mkEl('span', { class: 'pd-reply-time' });   timeSpan.textContent   = t;
+      meta.appendChild(authorSpan);
+      meta.appendChild(timeSpan);
+
+      var textEl = mkEl('div', { class: 'pd-reply-text' }); textEl.textContent = r.comment;
+      item.appendChild(meta);
+      item.appendChild(textEl);
+
+      if (r.author_token === MY_TOKEN) {
+        var replyEditBtn = mkEl('button', { class: 'pd-reply-edit-btn', title: 'Edit reply' });
+        replyEditBtn.textContent = '✏';
+        item.appendChild(replyEditBtn);
+
+        var replyEditForm = mkEl('div', { class: 'pd-inline-edit' });
+        replyEditForm.style.display = 'none';
+        var replyEditTa = mkEl('textarea'); replyEditTa.value = r.comment;
+        var replyEditBtns   = mkEl('div', { class: 'pd-inline-edit-btns' });
+        var replyEditSave   = mkEl('button', { class: 'pd-inline-save' });   replyEditSave.textContent = 'Save';
+        var replyEditCancel = mkEl('button', { class: 'pd-inline-cancel' }); replyEditCancel.textContent = 'Cancel';
+        replyEditBtns.appendChild(replyEditSave);
+        replyEditBtns.appendChild(replyEditCancel);
+        replyEditForm.appendChild(replyEditTa);
+        replyEditForm.appendChild(replyEditBtns);
+        item.appendChild(replyEditForm);
+
+        replyEditBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          textEl.style.display = 'none';
+          replyEditBtn.style.display = 'none';
+          replyEditTa.value = r.comment;
+          replyEditForm.style.display = 'block';
+          replyEditTa.focus();
+        });
+        replyEditCancel.addEventListener('click', function (e) {
+          e.stopPropagation();
+          replyEditForm.style.display = 'none';
+          textEl.style.display = '';
+          replyEditBtn.style.display = '';
+        });
+        replyEditSave.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var newText = replyEditTa.value.trim();
+          if (!newText) { replyEditTa.focus(); return; }
+          db.from('pindrop_replies').update({ comment: newText }).eq('id', r.id).then(function (res) {
+            if (res.error) { console.error('[Pindrop] Reply edit failed:', res.error); return; }
+            r.comment = newText;
+            textEl.textContent = newText;
+            replyEditForm.style.display = 'none';
+            textEl.style.display = '';
+            replyEditBtn.style.display = '';
+          });
+        });
+      }
+
       container.appendChild(item);
     });
   }
@@ -975,10 +1144,56 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
         body.appendChild(snip);
       }
 
-      // Comment
+      // Comment + inline edit
       var commentEl = mkEl('div', { class: ann.comment ? 'pd-card-comment' : 'pd-card-empty' });
       commentEl.textContent = ann.comment || 'No comment';
       body.appendChild(commentEl);
+
+      if (ann.author_token === MY_TOKEN) {
+        var editCommentBtn = mkEl('button', { class: 'pd-edit-btn', title: 'Edit comment' });
+        editCommentBtn.textContent = '✏ Edit';
+        body.appendChild(editCommentBtn);
+
+        var editForm = mkEl('div', { class: 'pd-inline-edit' });
+        editForm.style.display = 'none';
+        var editTa = mkEl('textarea'); editTa.value = ann.comment || '';
+        var editBtns = mkEl('div', { class: 'pd-inline-edit-btns' });
+        var editSave = mkEl('button', { class: 'pd-inline-save' }); editSave.textContent = 'Save';
+        var editCancel = mkEl('button', { class: 'pd-inline-cancel' }); editCancel.textContent = 'Cancel';
+        editBtns.appendChild(editSave);
+        editBtns.appendChild(editCancel);
+        editForm.appendChild(editTa);
+        editForm.appendChild(editBtns);
+        body.appendChild(editForm);
+
+        editCommentBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          commentEl.style.display = 'none';
+          editCommentBtn.style.display = 'none';
+          editTa.value = ann.comment || '';
+          editForm.style.display = 'block';
+          editTa.focus();
+        });
+        editCancel.addEventListener('click', function (e) {
+          e.stopPropagation();
+          editForm.style.display = 'none';
+          commentEl.style.display = '';
+          editCommentBtn.style.display = '';
+        });
+        editSave.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var newText = editTa.value.trim() || null;
+          db.from('pindrop_annotations').update({ comment: newText }).eq('id', ann.id).then(function (r) {
+            if (r.error) { console.error('[Pindrop] Edit failed:', r.error); return; }
+            ann.comment = newText;
+            commentEl.textContent = newText || 'No comment';
+            commentEl.className   = newText ? 'pd-card-comment' : 'pd-card-empty';
+            editForm.style.display = 'none';
+            commentEl.style.display = '';
+            editCommentBtn.style.display = '';
+          });
+        });
+      }
 
       card.appendChild(body);
 
