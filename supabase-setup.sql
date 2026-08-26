@@ -27,10 +27,10 @@ create table if not exists pindrop_annotations (
   resolved        boolean     not null default false,
   created_at      timestamptz not null default now(),
 
-  -- v0.6.0 — Page-change Awareness
-  dom_fingerprint text,             -- DOM context snapshot; compared on load to flag stale annotations
+  -- DOM context snapshot; compared on load to flag stale annotations
+  dom_fingerprint text,
 
-  -- v0.8.0 — Identity & Roles
+  -- Supabase Auth UID for persistent cross-device ownership
   user_id         uuid references auth.users(id) on delete set null
 );
 
@@ -42,13 +42,21 @@ create table if not exists pindrop_replies (
   comment        text        not null,
   created_at     timestamptz not null default now(),
 
-  -- v0.8.0 — Identity & Roles
+  -- Supabase Auth UID for persistent cross-device ownership
   user_id        uuid references auth.users(id) on delete set null
+);
+
+create table if not exists pindrop_profiles (
+  id           uuid primary key references auth.users(id) on delete cascade,
+  display_name text,
+  is_admin     boolean not null default false,
+  created_at   timestamptz not null default now()
 );
 
 -- ─── Row Level Security ───────────────────────────────────────────────────────
 alter table pindrop_annotations enable row level security;
 alter table pindrop_replies     enable row level security;
+alter table pindrop_profiles    enable row level security;
 
 create policy "public read"   on pindrop_annotations for select using (true);
 create policy "public insert" on pindrop_annotations for insert with check (true);
@@ -60,6 +68,10 @@ create policy "public insert" on pindrop_replies for insert with check (true);
 create policy "public update" on pindrop_replies for update using (true) with check (true);
 create policy "public delete" on pindrop_replies for delete using (true);
 
+create policy "public read"  on pindrop_profiles for select using (true);
+create policy "own insert"   on pindrop_profiles for insert with check (auth.uid() = id);
+create policy "own update"   on pindrop_profiles for update using (auth.uid() = id) with check (auth.uid() = id);
+
 -- ─── Realtime ─────────────────────────────────────────────────────────────────
 -- Enable Realtime so live annotation feed, presence, and cursors work.
 alter publication supabase_realtime add table pindrop_annotations;
@@ -68,24 +80,3 @@ alter publication supabase_realtime add table pindrop_replies;
 -- Full replica identity so UPDATE and DELETE events include the row id.
 alter table pindrop_annotations replica identity full;
 alter table pindrop_replies     replica identity full;
-
--- ─── Migration: v0.6.0 (run if upgrading an existing install) ────────────────
--- Safe to run on a fresh install too — IF NOT EXISTS guards the column add.
-alter table pindrop_annotations add column if not exists dom_fingerprint text;
-
--- ─── Migration: v0.8.0 (run if upgrading an existing install) ────────────────
-alter table pindrop_annotations add column if not exists user_id uuid references auth.users(id) on delete set null;
-alter table pindrop_replies     add column if not exists user_id uuid references auth.users(id) on delete set null;
-
-create table if not exists pindrop_profiles (
-  id           uuid primary key references auth.users(id) on delete cascade,
-  display_name text,
-  is_admin     boolean not null default false,
-  created_at   timestamptz not null default now()
-);
-
-alter table pindrop_profiles enable row level security;
-
-create policy "public read"  on pindrop_profiles for select using (true);
-create policy "own insert"   on pindrop_profiles for insert with check (auth.uid() = id);
-create policy "own update"   on pindrop_profiles for update using (auth.uid() = id) with check (auth.uid() = id);

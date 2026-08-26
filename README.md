@@ -15,7 +15,7 @@ Leave pins, draw on the page, highlight text, and have threaded conversations �
 - 💬 **Threaded replies** — comment on any annotation
 - ✏️ **Edit** — update your own comments and replies inline
 - ✓ **Resolve** — mark feedback as done; resolved items collapse automatically
-- 🗑️ **Delete** — anonymous ownership via localStorage token
+- 🗑️ **Delete** — ownership via your account or localStorage token
 - 🎯 **Focus mode** — click any annotation to dim everything else
 - 📐 **Element anchoring** — pins reposition correctly across screen sizes
 - 🔴 **Live cursors** — see other reviewers' cursors in real time
@@ -24,20 +24,16 @@ Leave pins, draw on the page, highlight text, and have threaded conversations �
 - ⚠️ **Page-change awareness** — annotations flagged as outdated when the page content around them changes
 - ⌨️ **Keyboard shortcuts** — T = toolbar, P = pin, D = draw, H = highlight, A = annotations, Shift+Enter = submit, Esc = cancel
 - 🔒 **Your data** — everything goes to your own Supabase project
-- 👑 **Admin mode** — sign in via magic link to delete any annotation regardless of ownership
+- 🔑 **Identity** — sign in with your email via magic link; ownership and admin status persist across devices
+- 👑 **Admin** — admins can delete any annotation regardless of who posted it
 
 ---
 
 ## Setup
 
-### 1. Create your Supabase table
+### 1. Create your Supabase tables
 
 Go to your [Supabase](https://supabase.com) project → SQL Editor → paste and run `supabase-setup.sql`.
-
-> **Upgrading from v0.5.x?** Run this one-liner in the SQL Editor to add the new column:
-> ```sql
-> alter table pindrop_annotations add column if not exists dom_fingerprint text;
-> ```
 
 ### 2. Get your credentials
 
@@ -49,7 +45,7 @@ In Supabase: **Settings → API**
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/gh/kalebheitzman/pindrop/pindrop.min.js"
+  src="https://cdn.jsdelivr.net/gh/kalebheitzman/pindrop@0.8.1/pindrop.min.js"
   data-supabase-url="https://YOUR_PROJECT_ID.supabase.co"
   data-supabase-key="eyJ..."
   defer
@@ -114,28 +110,26 @@ Add `data-webhook-url` to your script tag and Pindrop will POST a JSON payload t
 
 ---
 
-## Admin Mode
+## Identity & Admin
 
-Admin mode lets a site owner delete any annotation regardless of who posted it. It uses Supabase Auth magic links — no passwords, no URL params, no client-side secrets.
+Pindrop supports persistent identity via Supabase Auth magic links — no passwords ever. On first visit, enter your email and click the link that arrives in your inbox. Your name, ownership, and admin status follow you across devices and browsers.
 
 ### Setup
 
 1. In your Supabase project go to **Authentication → URL Configuration**
-   - Set **Site URL** to your site (e.g. `https://yoursite.com`)
-   - Add both environments to **Additional Redirect URLs**: `http://127.0.0.1/*` and `https://yoursite.com/*`
+   - Set **Site URL** to your production site (e.g. `https://yoursite.com`)
+   - Add any dev environments to **Additional Redirect URLs** (e.g. `http://127.0.0.1:8000/*`)
 
-2. Go to **Authentication → Users → Invite User** and enter your email address
+2. To grant admin access to a user, set `is_admin = true` on their row in the `pindrop_profiles` table via the Supabase dashboard.
 
-3. Click the magic link in the email — it redirects you back to your site and signs you in
+### Using the Account panel
 
-### Using admin mode
-
-Open the ✏️ toolbar. At the bottom you'll see an **Admin** section:
+Open the ✏️ toolbar. At the bottom you'll see an **Account** section:
 
 - **Signed out** — enter your email and click "Send magic link", then click the link in your email
-- **Signed in** — your email is shown with a Sign out button; every annotation card now has a Delete button
+- **Signed in** — your email is shown with a Sign out button; admin users see a 👑 badge and can delete any annotation regardless of who posted it
 
-Admin state is stored in your browser by Supabase Auth. Closing the tab doesn't sign you out — use the Sign out button when done.
+Sign-in state is stored in your browser by Supabase Auth. Closing the tab doesn't sign you out — use the Sign out button when done.
 
 ---
 
