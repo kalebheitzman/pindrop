@@ -28,7 +28,10 @@ create table if not exists pindrop_annotations (
   created_at      timestamptz not null default now(),
 
   -- v0.6.0 — Page-change Awareness
-  dom_fingerprint text              -- DOM context snapshot; compared on load to flag stale annotations
+  dom_fingerprint text,             -- DOM context snapshot; compared on load to flag stale annotations
+
+  -- v0.8.0 — Identity & Roles
+  user_id         uuid references auth.users(id) on delete set null
 );
 
 create table if not exists pindrop_replies (
@@ -37,7 +40,10 @@ create table if not exists pindrop_replies (
   author_name    text        not null default 'Anonymous',
   author_token   text,
   comment        text        not null,
-  created_at     timestamptz not null default now()
+  created_at     timestamptz not null default now(),
+
+  -- v0.8.0 — Identity & Roles
+  user_id        uuid references auth.users(id) on delete set null
 );
 
 -- ─── Row Level Security ───────────────────────────────────────────────────────
@@ -66,3 +72,20 @@ alter table pindrop_replies     replica identity full;
 -- ─── Migration: v0.6.0 (run if upgrading an existing install) ────────────────
 -- Safe to run on a fresh install too — IF NOT EXISTS guards the column add.
 alter table pindrop_annotations add column if not exists dom_fingerprint text;
+
+-- ─── Migration: v0.8.0 (run if upgrading an existing install) ────────────────
+alter table pindrop_annotations add column if not exists user_id uuid references auth.users(id) on delete set null;
+alter table pindrop_replies     add column if not exists user_id uuid references auth.users(id) on delete set null;
+
+create table if not exists pindrop_profiles (
+  id           uuid primary key references auth.users(id) on delete cascade,
+  display_name text,
+  is_admin     boolean not null default false,
+  created_at   timestamptz not null default now()
+);
+
+alter table pindrop_profiles enable row level security;
+
+create policy "public read"  on pindrop_profiles for select using (true);
+create policy "own insert"   on pindrop_profiles for insert with check (auth.uid() = id);
+create policy "own update"   on pindrop_profiles for update using (auth.uid() = id) with check (auth.uid() = id);

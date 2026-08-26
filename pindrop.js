@@ -63,7 +63,8 @@
   var lastDrawVP    = null;   // last viewport coords of a completed stroke
   var realtimeChannel = null; // Supabase Realtime channel
   var cursors       = {};     // token → { el, hideTimer }
-  var adminUser     = null;   // Supabase Auth user when admin is signed in
+  var adminUser     = null;   // Supabase Auth user when signed in
+  var isAdminUser   = false;  // true when signed-in user has profiles.is_admin = true
 
   // Sidebar filter/sort state
   var sbFilterType   = null;      // null | 'pin' | 'drawing' | 'highlight'
@@ -140,7 +141,7 @@
       buildCanvas();
       buildSVGLayer();
       buildSidebar();
-      buildNamePrompt();
+      buildIdentityPrompt();
       loadAnnotations();
       setupRealtime();
       setupAuth();
@@ -579,12 +580,12 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
 
     // Admin section
     var adminDiv   = mkEl('div', { class: 'pd-divider' });
-    var adminLabel = mkEl('p',   { class: 'pd-label' }); adminLabel.textContent = 'Admin';
+    var adminLabel = mkEl('p',   { class: 'pd-label' }); adminLabel.textContent = 'Account';
 
     var adminForm      = mkEl('div', { id: 'pd-admin-form' });
     var adminEmailInput = mkEl('input', { id: 'pd-admin-email', type: 'email', placeholder: 'your@email.com' });
     var adminSendBtn   = mkEl('button', { class: 'pd-btn', id: 'pd-admin-send' });
-    adminSendBtn.textContent = '🔑 Send magic link';
+    adminSendBtn.textContent = '✉️ Send magic link';
     adminForm.appendChild(adminEmailInput);
     adminForm.appendChild(adminSendBtn);
 
@@ -613,7 +614,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
           adminEmailInput.value    = '';
         }
         setTimeout(function () {
-          if (!adminUser) adminSendBtn.textContent = '🔑 Send magic link';
+          if (!adminUser) adminSendBtn.textContent = '✉️ Send magic link';
         }, 4000);
       });
     });
@@ -722,6 +723,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       comment:         comment || null,
       author_token:    MY_TOKEN,
       dom_fingerprint: computeFingerprint(pending.data),
+      user_id:         adminUser ? adminUser.id : null,
     });
 
     db.from('pindrop_annotations').insert(record).select().single().then(function (result) {
@@ -1260,7 +1262,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     submitBtn.disabled = true;
     submitBtn.textContent = 'Saving…';
     db.from('pindrop_replies')
-      .insert({ annotation_id: annId, author_name: name, comment: text, author_token: MY_TOKEN })
+      .insert({ annotation_id: annId, author_name: name, comment: text, author_token: MY_TOKEN, user_id: adminUser ? adminUser.id : null })
       .select().single()
       .then(function (result) {
         submitBtn.disabled = false;
@@ -1292,7 +1294,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       item.appendChild(meta);
       item.appendChild(textEl);
 
-      if (r.author_token === MY_TOKEN) {
+      if (r.author_token === MY_TOKEN || (adminUser && r.user_id === adminUser.id)) {
         var replyEditBtn = mkEl('button', { class: 'pd-reply-edit-btn', title: 'Edit reply' });
         replyEditBtn.textContent = '✏';
         item.appendChild(replyEditBtn);
@@ -1669,7 +1671,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       });
       actionsRow.appendChild(resolveBtn);
 
-      if (ann.author_token === MY_TOKEN || adminUser) {
+      if (ann.author_token === MY_TOKEN || (adminUser && ann.user_id === adminUser.id) || isAdminUser) {
         var deleteBtn = mkEl('button', { class: 'pd-act-btn pd-act-delete' });
         deleteBtn.textContent = '🗑 Delete';
         deleteBtn.addEventListener('click', function (e) {
@@ -1827,38 +1829,51 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       .replace(/>/g, '&gt;');
   }
 
-  // ─── NAME PROMPT ─────────────────────────────────────────────────────────
-  function buildNamePrompt() {
-    if (localStorage.getItem('pd_name')) return;  // already set
+  // ─── IDENTITY PROMPT ─────────────────────────────────────────────────────
+  function buildIdentityPrompt() {
+    if (adminUser) return;               // already signed in
+    if (localStorage.getItem('pd_name')) return;  // already named / skipped
 
     var prompt = mkEl('div', { id: 'pd-name-prompt' });
     prompt.innerHTML = [
       '<h4>👋 Who are you?</h4>',
-      '<p>Your name will appear on any feedback you leave.</p>',
-      '<input id="pd-name-input" type="text" placeholder="e.g. Kaleb" autocomplete="name" />',
-      '<button id="pd-name-go">Let\'s go</button>',
+      '<p>Enter your email to tie feedback to your identity across devices.</p>',
+      '<input id="pd-name-input" type="email" placeholder="your@email.com" autocomplete="email" />',
+      '<button id="pd-name-go">Send magic link</button>',
       '<button id="pd-name-skip">Continue anonymously</button>',
     ].join('');
     document.body.appendChild(prompt);
 
     var input = document.getElementById('pd-name-input');
+    var goBtn = document.getElementById('pd-name-go');
 
-    function saveName() {
-      var name = input.value.trim();
-      if (name) localStorage.setItem('pd_name', name);
-      // Pre-fill any open popover name fields
-      var popName = document.getElementById('pd-pop-name');
-      if (popName) popName.value = name;
-      prompt.remove();
-    }
+    goBtn.addEventListener('click', function () {
+      var email = input.value.trim();
+      if (!email) { input.focus(); return; }
+      goBtn.disabled    = true;
+      goBtn.textContent = 'Sending…';
+      db.auth.signInWithOtp({
+        email: email,
+        options: { emailRedirectTo: window.location.href }
+      }).then(function (result) {
+        goBtn.disabled = false;
+        if (result.error) {
+          goBtn.textContent = '❌ Try again';
+        } else {
+          goBtn.textContent   = '✓ Check your email!';
+          input.style.display = 'none';
+          document.getElementById('pd-name-skip').textContent = 'Close for now';
+        }
+      });
+    });
 
-    document.getElementById('pd-name-go').addEventListener('click', saveName);
     document.getElementById('pd-name-skip').addEventListener('click', function () {
       localStorage.setItem('pd_name', 'Anonymous');
       prompt.remove();
     });
+
     input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') saveName();
+      if (e.key === 'Enter') goBtn.click();
     });
 
     setTimeout(function () { input.focus(); }, 100);
@@ -1973,8 +1988,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       var session = result.data && result.data.session;
       if (session && session.user) {
         adminUser = session.user;
-        updateAdminUI();
-        renderSidebarList();
+        fetchProfile(adminUser.id);
       }
     });
 
@@ -1982,8 +1996,36 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     db.auth.onAuthStateChange(function (event, session) {
       if (event === 'SIGNED_IN' && session && session.user) {
         adminUser = session.user;
+        fetchProfile(adminUser.id);
+        // Remove identity prompt if still showing
+        var prompt = document.getElementById('pd-name-prompt');
+        if (prompt) prompt.remove();
       } else if (event === 'SIGNED_OUT') {
-        adminUser = null;
+        adminUser   = null;
+        isAdminUser = false;
+        updateAdminUI();
+        renderSidebarList();
+      }
+    });
+  }
+
+  function fetchProfile(userId) {
+    db.from('pindrop_profiles').select('*').eq('id', userId).single().then(function (result) {
+      if (result.data) {
+        isAdminUser = !!result.data.is_admin;
+        if (result.data.display_name) {
+          localStorage.setItem('pd_name', result.data.display_name);
+          var popName = document.getElementById('pd-pop-name');
+          if (popName) popName.value = result.data.display_name;
+        }
+      } else {
+        // First sign-in — create profile with email prefix as display name
+        isAdminUser = false;
+        var displayName = adminUser.email ? adminUser.email.split('@')[0] : 'User';
+        localStorage.setItem('pd_name', displayName);
+        var popName = document.getElementById('pd-pop-name');
+        if (popName) popName.value = displayName;
+        db.from('pindrop_profiles').insert({ id: userId, display_name: displayName }).then(function () {});
       }
       updateAdminUI();
       renderSidebarList();
@@ -1998,12 +2040,12 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     if (adminUser) {
       formEl.style.display   = 'none';
       activeEl.style.display = 'flex';
-      if (lblEl) lblEl.textContent = '👑 ' + (adminUser.email || 'Admin');
+      if (lblEl) lblEl.textContent = (isAdminUser ? '👑 ' : '✓ ') + (adminUser.email || 'Signed in');
     } else {
       formEl.style.display   = 'flex';
       activeEl.style.display = 'none';
       var sendBtn = document.getElementById('pd-admin-send');
-      if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '🔑 Send magic link'; }
+      if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '✉️ Send magic link'; }
     }
   }
 

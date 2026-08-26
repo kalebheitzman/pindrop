@@ -91,6 +91,21 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
+## v0.8.0 — Identity & Roles
+
+- [ ] Replace name prompt with email prompt on first load
+- [ ] `signInWithOtp` on first visit — magic link sent automatically, no password ever
+- [ ] Once signed in, user's display name pulled from Supabase Auth metadata (set on first sign-in)
+- [ ] Annotations store `user_id` (Supabase Auth UID) alongside `author_token` for backward compatibility
+- [ ] `profiles` table — `id` (auth UID), `display_name`, `is_admin boolean default false`
+- [ ] RLS delete policy updated: allow delete if `auth.uid() = user_id` OR `profiles.is_admin = true`
+- [ ] Admin flag toggled per-user in Supabase dashboard (replaces magic link admin flow)
+- [ ] Identity persists across devices and browsers — no more lost ownership on cache clear
+- [ ] Presence and live cursors show real name automatically
+- [ ] Existing anonymous annotations (author_token only) remain visible and editable by original browser
+
+---
+
 ## Future Ideas
 
 - Email digest via Supabase Edge Function
