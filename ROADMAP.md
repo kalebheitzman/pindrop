@@ -138,10 +138,21 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
-## v1.0.0 — Cursor Polish
+## v0.9.1 — Cursor Polish ✓
 
-- [ ] Cursor label shows the active tool (pin / draw / highlight) and current color
-- [ ] Label fades in on tool change, fades out after a short idle
+- [x] Cursor label shows the active tool as an emoji prefix (📍 pin · ✏️ draw · 🖍️ highlight)
+- [x] Label falls back to just the name when no tool is active
+- [x] Tool broadcasted alongside name, color, and position in the cursor payload
+
+---
+
+## v1.0.0 — Production Ready
+
+- [ ] Export annotations as CSV (download all open/resolved annotations with author, page, comment, timestamp)
+- [ ] Graceful reconnect indicator dismissed cleanly when session is restored
+- [ ] Admin dashboard — standalone page listing all annotations across all pages
+- [ ] Email digest via Supabase Edge Function (daily or on-demand summary to admin)
+- [ ] README covers full setup end-to-end including Supabase Auth URL config and admin flag
 
 ---
 

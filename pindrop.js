@@ -1,5 +1,5 @@
 /**
- * Pindrop v0.9.0 — drop-in design annotation tool
+ * Pindrop v0.9.1 — drop-in design annotation tool
  * Pins · Freehand drawing · Text highlights · Threaded comments
  * Backed by Supabase (free tier works great).
  * License: MIT + Commons Clause (free to use, not for resale)
@@ -1224,7 +1224,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     realtimeChannel.on('broadcast', { event: 'cursor' }, function (payload) {
       var d = payload.payload;
       if (!d || d.token === MY_TOKEN) return;
-      updateCursor(d.token, d.x, d.y, d.name, d.color);
+      updateCursor(d.token, d.x, d.y, d.name, d.color, d.tool);
     });
     realtimeChannel.on('broadcast', { event: 'cursor_leave' }, function (payload) {
       var d = payload.payload;
@@ -1261,7 +1261,8 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
             y: lastCy / window.innerHeight,
             name: localStorage.getItem('pd_name') || 'Anonymous',
             token: MY_TOKEN,
-            color: activeColor
+            color: activeColor,
+            tool: mode
           }
         });
       }, 50);
@@ -1275,7 +1276,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     svgLayer.querySelectorAll('[data-id="' + id + '"]').forEach(function (el) { el.remove(); });
   }
 
-  function updateCursor(token, xPct, yPct, name, color) {
+  function updateCursor(token, xPct, yPct, name, color, tool) {
     var el = document.getElementById('pd-cur-' + token);
     if (!el) {
       el = mkEl('div', { class: 'pd-cursor', id: 'pd-cur-' + token });
@@ -1288,7 +1289,10 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     var dot = el.querySelector('.pd-cursor-dot');
     var label = el.querySelector('.pd-cursor-name');
     if (dot) dot.style.background = color || '#4f46e5';
-    if (label) label.textContent = name || 'Someone';
+    if (label) {
+      var toolIcon = tool === 'pin' ? '📍' : tool === 'draw' ? '✏️' : tool === 'highlight' ? '🖍️' : '';
+      label.textContent = (toolIcon ? toolIcon + ' ' : '') + (name || 'Someone');
+    }
     el.style.left    = (xPct * window.innerWidth)  + 'px';
     el.style.top     = (yPct * window.innerHeight) + 'px';
     el.style.display = 'flex';
