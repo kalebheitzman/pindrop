@@ -1,5 +1,5 @@
 /**
- * Pindrop v0.8.3 — drop-in design annotation tool
+ * Pindrop v0.9.0 — drop-in design annotation tool
  * Pins · Freehand drawing · Text highlights · Threaded comments
  * Backed by Supabase (free tier works great).
  * License: MIT + Commons Clause (free to use, not for resale)
@@ -61,7 +61,9 @@
   var tempPinSeq    = 0;      // for pins not yet saved
   var drawStrokes   = [];     // accumulated strokes in current drawing session
   var lastDrawVP    = null;   // last viewport coords of a completed stroke
-  var realtimeChannel = null; // Supabase Realtime channel
+  var realtimeChannel        = null;  // Supabase Realtime channel
+  var realtimeConnected      = false; // true when channel is SUBSCRIBED
+  var realtimeEverSubscribed = false; // true after first successful subscribe
   var cursors       = {};     // token → { el, hideTimer }
   var adminUser     = null;   // Supabase Auth user when signed in
   var isAdminUser   = false;  // true when signed-in user has profiles.is_admin = true
@@ -144,6 +146,7 @@
       buildIdentityPrompt();
       loadAnnotations();
       setupRealtime();
+      setupReconnectHandlers();
       setupAuth();
       window.addEventListener('resize', function () {
         canvas.width  = window.innerWidth;
@@ -490,6 +493,9 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
 \
 /* ── Viewer count ── */\
 #pd-viewers { display: none; font-size: 11px; color: #64748b; text-align: center; padding: 0; }\
+\
+/* ── Reconnect badge ── */\
+#pd-reconnect-badge { position: fixed; bottom: 80px; right: 20px; background: #f59e0b; color: #fff; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; z-index: 10005; display: none; box-shadow: 0 2px 8px rgba(0,0,0,.2); pointer-events: none; letter-spacing: .02em; }\
 \
 /* ── Admin panel ── */\
 #pd-admin-form { display: flex; flex-direction: column; gap: 6px; }\
@@ -1087,6 +1093,52 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
   }
 
   // ─── REALTIME ─────────────────────────────────────────────────────────────
+  function showReconnectBadge(visible) {
+    var badge = document.getElementById('pd-reconnect-badge');
+    if (!badge) {
+      badge = mkEl('div', { id: 'pd-reconnect-badge' });
+      badge.textContent = '⟳ Reconnecting…';
+      document.body.appendChild(badge);
+    }
+    badge.style.display = visible ? 'block' : 'none';
+  }
+
+  function teardownRealtime() {
+    if (realtimeChannel) {
+      db.removeChannel(realtimeChannel);
+      realtimeChannel = null;
+    }
+    realtimeConnected = false;
+    // Clear stale remote cursors
+    Object.keys(cursors).forEach(function (token) {
+      if (cursors[token] && cursors[token].el) cursors[token].el.remove();
+      if (cursors[token] && cursors[token].hideTimer) clearTimeout(cursors[token].hideTimer);
+    });
+    cursors = {};
+    updateViewerCount(0);
+  }
+
+  function reconnectRealtime() {
+    teardownRealtime();
+    setupRealtime();
+  }
+
+  function setupReconnectHandlers() {
+    window.addEventListener('online', function () {
+      if (!realtimeConnected) reconnectRealtime();
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) {
+        // Broadcast cursor leave so peers remove our cursor immediately
+        if (realtimeChannel) {
+          realtimeChannel.send({ type: 'broadcast', event: 'cursor_leave', payload: { token: MY_TOKEN } });
+        }
+      } else if (!realtimeConnected) {
+        reconnectRealtime();
+      }
+    });
+  }
+
   function setupRealtime() {
     realtimeChannel = db.channel('pindrop:' + PAGE_KEY, {
       config: { presence: { key: MY_TOKEN } }
@@ -1180,9 +1232,17 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     });
 
     realtimeChannel.subscribe(function (status) {
-      if (status !== 'SUBSCRIBED') return;
-      var myName = localStorage.getItem('pd_name') || 'Anonymous';
-      realtimeChannel.track({ name: myName, token: MY_TOKEN });
+      if (status === 'SUBSCRIBED') {
+        realtimeConnected = true;
+        showReconnectBadge(false);
+        var myName = localStorage.getItem('pd_name') || 'Anonymous';
+        realtimeChannel.track({ name: myName, token: MY_TOKEN });
+        if (realtimeEverSubscribed) loadAnnotations(); // refresh missed changes on reconnect
+        realtimeEverSubscribed = true;
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        realtimeConnected = false;
+        showReconnectBadge(true);
+      }
     });
 
     // Cursor broadcast — send (throttled to 50ms)
@@ -1207,11 +1267,6 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       }, 50);
     });
 
-    document.addEventListener('visibilitychange', function () {
-      if (document.hidden && realtimeChannel) {
-        realtimeChannel.send({ type: 'broadcast', event: 'cursor_leave', payload: { token: MY_TOKEN } });
-      }
-    });
   }
 
   function removeAnnotationDOM(id) {

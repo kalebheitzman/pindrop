@@ -127,6 +127,24 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
+## v0.9.0 — Resilient Realtime ✓
+
+- [x] Detect network drop via `window` `online` event and `visibilitychange`
+- [x] Re-subscribe to Supabase Realtime channels automatically on reconnect
+- [x] Show a subtle amber "⟳ Reconnecting…" badge when the connection is lost
+- [x] Dismiss the badge and refresh annotation list once back online
+- [x] `teardownRealtime()` clears stale cursors and viewer count on drop
+- [x] Reconnect handlers registered once at boot — not duplicated on each re-subscribe
+
+---
+
+## v1.0.0 — Cursor Polish
+
+- [ ] Cursor label shows the active tool (pin / draw / highlight) and current color
+- [ ] Label fades in on tool change, fades out after a short idle
+
+---
+
 ## Future Ideas
 
 - Email digest via Supabase Edge Function
