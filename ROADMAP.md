@@ -61,13 +61,27 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
-## v0.6.1–0.6.2 — Shortcuts & Polish ✓
+## v0.6.1–0.6.3 — Shortcuts & Polish ✓
 
 - [x] T = toggle toolbar panel
 - [x] A = toggle annotations sidebar
+- [x] Shift+Enter submits comments and replies
 - [x] Filters and annotation cards start collapsed
 - [x] ANNOTATIONS heading explicitly sans-serif
 - [x] Toolbar panel closes automatically when sidebar opens
+
+---
+
+## v0.7.0 — Admin Mode ✓
+
+- [x] Admin section in the toolbar panel (email input + Send magic link button)
+- [x] Supabase Auth magic link sign-in — no password, no URL params, no client-side secrets
+- [x] `onAuthStateChange` listener shows/hides admin UI and re-renders sidebar on sign-in/out
+- [x] Signed-in admin sees Delete button on every annotation regardless of ownership
+- [x] Signed-out state shows sign-in form; signed-in state shows email + Sign out button
+- [x] Existing installs work identically — no script tag changes required
+
+**Setup:** In your Supabase project, go to Authentication → Users → Invite User. Add your email. Configure Authentication → URL Configuration with your site URL and redirect URLs. Click the magic link in your email to activate admin mode on that browser.
 
 ---
 
@@ -78,7 +92,6 @@ A living document tracking what's done, what's next, and what's planned.
 - Smooth cursor interpolation
 - Reconnect gracefully on network drop
 - Attachments / screenshots on comments
-- Optional Supabase Auth for persistent identity across devices
 - Export annotations as PDF or CSV
 - Annotation "sessions" (group a review into a named round)
 - Admin dashboard (separate page to review all annotations across all pages)

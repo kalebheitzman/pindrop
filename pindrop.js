@@ -63,6 +63,7 @@
   var lastDrawVP    = null;   // last viewport coords of a completed stroke
   var realtimeChannel = null; // Supabase Realtime channel
   var cursors       = {};     // token → { el, hideTimer }
+  var adminUser     = null;   // Supabase Auth user when admin is signed in
 
   // Sidebar filter/sort state
   var sbFilterType   = null;      // null | 'pin' | 'drawing' | 'highlight'
@@ -140,6 +141,7 @@
       buildNamePrompt();
       loadAnnotations();
       setupRealtime();
+      setupAuth();
       window.addEventListener('resize', function () {
         canvas.width  = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -485,6 +487,15 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
 \
 /* ── Viewer count ── */\
 #pd-viewers { display: none; font-size: 11px; color: #64748b; text-align: center; padding: 0; }\
+\
+/* ── Admin panel ── */\
+#pd-admin-form { display: flex; flex-direction: column; gap: 6px; }\
+#pd-admin-email { width: 100%; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 7px 10px; font-size: 12px; outline: none; font-family: inherit; box-sizing: border-box; color: #1e293b; }\
+#pd-admin-email:focus { border-color: #4f46e5; }\
+#pd-admin-active { display: none; flex-direction: column; gap: 6px; }\
+#pd-admin-email-label { font-size: 11px; color: #475569; font-weight: 600; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\
+.pd-btn-admin { width: 100%; padding: 8px; border: none; border-radius: 9px; background: #ede9fe; font-size: 12px; font-weight: 700; color: #4f46e5; cursor: pointer; transition: background .15s; }\
+.pd-btn-admin:hover { background: #ddd6fe; }\
 ';
     var style = document.createElement('style');
     style.textContent = css;
@@ -563,10 +574,58 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     viewBtn.addEventListener('click', toggleSidebar);
 
     var viewersEl = mkEl('div', { id: 'pd-viewers' });
+
+    // Admin section
+    var adminDiv   = mkEl('div', { class: 'pd-divider' });
+    var adminLabel = mkEl('p',   { class: 'pd-label' }); adminLabel.textContent = 'Admin';
+
+    var adminForm      = mkEl('div', { id: 'pd-admin-form' });
+    var adminEmailInput = mkEl('input', { id: 'pd-admin-email', type: 'email', placeholder: 'your@email.com' });
+    var adminSendBtn   = mkEl('button', { class: 'pd-btn', id: 'pd-admin-send' });
+    adminSendBtn.textContent = '🔑 Send magic link';
+    adminForm.appendChild(adminEmailInput);
+    adminForm.appendChild(adminSendBtn);
+
+    var adminActive    = mkEl('div',   { id: 'pd-admin-active' });
+    var adminEmailLbl  = mkEl('div',   { id: 'pd-admin-email-label' });
+    var adminSignOut   = mkEl('button', { class: 'pd-btn pd-btn-admin', id: 'pd-admin-signout' });
+    adminSignOut.textContent = '👋 Sign out';
+    adminActive.appendChild(adminEmailLbl);
+    adminActive.appendChild(adminSignOut);
+
+    adminSendBtn.addEventListener('click', function () {
+      var email = adminEmailInput.value.trim();
+      if (!email) { adminEmailInput.focus(); return; }
+      adminSendBtn.disabled    = true;
+      adminSendBtn.textContent = 'Sending…';
+      db.auth.signInWithOtp({
+        email: email,
+        options: { emailRedirectTo: window.location.href }
+      }).then(function (result) {
+        adminSendBtn.disabled = false;
+        if (result.error) {
+          adminSendBtn.textContent = '❌ Error — try again';
+          console.error('[Pindrop] Magic link error:', result.error);
+        } else {
+          adminSendBtn.textContent = '✓ Check your email';
+          adminEmailInput.value    = '';
+        }
+        setTimeout(function () {
+          if (!adminUser) adminSendBtn.textContent = '🔑 Send magic link';
+        }, 4000);
+      });
+    });
+
+    adminSignOut.addEventListener('click', function () {
+      db.auth.signOut();
+    });
+
     [toolLabel, toolRow, mkEl('div', { class: 'pd-divider' }),
      colorLabel, colorRow,
      wLabel, wRow,
-     div1, viewersEl, viewBtn].forEach(function (node) { panel.appendChild(node); });
+     div1, viewersEl, viewBtn,
+     adminDiv, adminLabel, adminForm, adminActive
+    ].forEach(function (node) { panel.appendChild(node); });
 
     root.appendChild(panel);
     document.body.appendChild(root);
@@ -1608,7 +1667,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       });
       actionsRow.appendChild(resolveBtn);
 
-      if (ann.author_token === MY_TOKEN) {
+      if (ann.author_token === MY_TOKEN || adminUser) {
         var deleteBtn = mkEl('button', { class: 'pd-act-btn pd-act-delete' });
         deleteBtn.textContent = '🗑 Delete';
         deleteBtn.addEventListener('click', function (e) {
@@ -1903,6 +1962,47 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       pin.style.left = pos.x + 'px';
       pin.style.top  = pos.y + 'px';
     });
+  }
+
+  // ─── ADMIN AUTH ───────────────────────────────────────────────────────────
+  function setupAuth() {
+    // Check for an existing session (covers magic link redirect on page load)
+    db.auth.getSession().then(function (result) {
+      var session = result.data && result.data.session;
+      if (session && session.user) {
+        adminUser = session.user;
+        updateAdminUI();
+        renderSidebarList();
+      }
+    });
+
+    // React to sign-in / sign-out events
+    db.auth.onAuthStateChange(function (event, session) {
+      if (event === 'SIGNED_IN' && session && session.user) {
+        adminUser = session.user;
+      } else if (event === 'SIGNED_OUT') {
+        adminUser = null;
+      }
+      updateAdminUI();
+      renderSidebarList();
+    });
+  }
+
+  function updateAdminUI() {
+    var formEl   = document.getElementById('pd-admin-form');
+    var activeEl = document.getElementById('pd-admin-active');
+    var lblEl    = document.getElementById('pd-admin-email-label');
+    if (!formEl || !activeEl) return;
+    if (adminUser) {
+      formEl.style.display   = 'none';
+      activeEl.style.display = 'flex';
+      if (lblEl) lblEl.textContent = '👑 ' + (adminUser.email || 'Admin');
+    } else {
+      formEl.style.display   = 'flex';
+      activeEl.style.display = 'none';
+      var sendBtn = document.getElementById('pd-admin-send');
+      if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '🔑 Send magic link'; }
+    }
   }
 
   // ─── INIT ─────────────────────────────────────────────────────────────────
