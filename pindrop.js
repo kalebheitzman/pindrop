@@ -1,5 +1,5 @@
 /**
- * Pindrop v0.8.2 — drop-in design annotation tool
+ * Pindrop v0.8.3 — drop-in design annotation tool
  * Pins · Freehand drawing · Text highlights · Threaded comments
  * Backed by Supabase (free tier works great).
  * License: MIT + Commons Clause (free to use, not for resale)
@@ -600,13 +600,14 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       var email = adminEmailInput.value.trim();
       if (!email) { adminEmailInput.focus(); return; }
       adminSendBtn.disabled    = true;
+      adminSendBtn.disabled    = true;
       adminSendBtn.textContent = 'Sending…';
       db.auth.signInWithOtp({
         email: email,
         options: { emailRedirectTo: window.location.origin + window.location.pathname }
       }).then(function (result) {
-        adminSendBtn.disabled = false;
         if (result.error) {
+          adminSendBtn.disabled    = false;
           adminSendBtn.textContent = '❌ Error — try again';
           console.error('[Pindrop] Magic link error:', result.error);
         } else {
@@ -614,7 +615,10 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
           adminEmailInput.value    = '';
         }
         setTimeout(function () {
-          if (!adminUser) adminSendBtn.textContent = '✉️ Send magic link';
+          if (!adminUser) {
+            adminSendBtn.disabled    = false;
+            adminSendBtn.textContent = '✉️ Send magic link';
+          }
         }, 4000);
       });
     });
@@ -1856,8 +1860,8 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
         email: email,
         options: { emailRedirectTo: window.location.origin + window.location.pathname }
       }).then(function (result) {
-        goBtn.disabled = false;
         if (result.error) {
+          goBtn.disabled    = false;
           goBtn.textContent = '❌ Try again';
         } else {
           goBtn.textContent   = '✓ Check your email!';

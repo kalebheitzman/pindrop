@@ -120,6 +120,13 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
+## v0.8.3 — Send Button Polish ✓
+
+- [x] Disable "Send magic link" button immediately on click to prevent double-submission
+- [x] Button only re-enables on error; stays disabled on success (toolbar resets after 4 s if still signed out)
+
+---
+
 ## Future Ideas
 
 - Email digest via Supabase Edge Function
