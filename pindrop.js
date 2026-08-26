@@ -1,5 +1,5 @@
 /**
- * Pindrop v0.8.1 — drop-in design annotation tool
+ * Pindrop v0.8.2 — drop-in design annotation tool
  * Pins · Freehand drawing · Text highlights · Threaded comments
  * Backed by Supabase (free tier works great).
  * License: MIT + Commons Clause (free to use, not for resale)
@@ -603,7 +603,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       adminSendBtn.textContent = 'Sending…';
       db.auth.signInWithOtp({
         email: email,
-        options: { emailRedirectTo: window.location.href }
+        options: { emailRedirectTo: window.location.origin + window.location.pathname }
       }).then(function (result) {
         adminSendBtn.disabled = false;
         if (result.error) {
@@ -1854,7 +1854,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       goBtn.textContent = 'Sending…';
       db.auth.signInWithOtp({
         email: email,
-        options: { emailRedirectTo: window.location.href }
+        options: { emailRedirectTo: window.location.origin + window.location.pathname }
       }).then(function (result) {
         goBtn.disabled = false;
         if (result.error) {

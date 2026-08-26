@@ -114,6 +114,12 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
+## v0.8.2 — Auth Redirect Fix ✓
+
+- [x] Fix double-hash (`##`) in magic link redirect URL — `emailRedirectTo` now uses `window.location.origin + window.location.pathname` instead of `window.location.href` so no stale fragment is included
+
+---
+
 ## Future Ideas
 
 - Email digest via Supabase Edge Function
