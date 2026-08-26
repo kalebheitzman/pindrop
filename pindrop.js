@@ -1,5 +1,5 @@
 /**
- * PageNotes — drop-in design annotation tool
+ * Pindrop v0.7.1 — drop-in design annotation tool
  * Pins · Freehand drawing · Text highlights · Threaded comments
  * Backed by Supabase (free tier works great).
  * License: MIT + Commons Clause (free to use, not for resale)
@@ -131,7 +131,9 @@
     var s = document.createElement('script');
     s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
     s.onload = function () {
-      db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { flowType: 'implicit' }
+      });
       injectStyles();
       buildToolbar();
       buildPopover();

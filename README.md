@@ -24,6 +24,7 @@ Leave pins, draw on the page, highlight text, and have threaded conversations �
 - ⚠️ **Page-change awareness** — annotations flagged as outdated when the page content around them changes
 - ⌨️ **Keyboard shortcuts** — T = toolbar, P = pin, D = draw, H = highlight, A = annotations, Shift+Enter = submit, Esc = cancel
 - 🔒 **Your data** — everything goes to your own Supabase project
+- 👑 **Admin mode** — sign in via magic link to delete any annotation regardless of ownership
 
 ---
 
@@ -110,6 +111,31 @@ Add `data-webhook-url` to your script tag and Pindrop will POST a JSON payload t
   "reply": { "id": "...", "comment": "...", "author_name": "...", ... }
 }
 ```
+
+---
+
+## Admin Mode
+
+Admin mode lets a site owner delete any annotation regardless of who posted it. It uses Supabase Auth magic links — no passwords, no URL params, no client-side secrets.
+
+### Setup
+
+1. In your Supabase project go to **Authentication → URL Configuration**
+   - Set **Site URL** to your site (e.g. `https://yoursite.com`)
+   - Add both environments to **Additional Redirect URLs**: `http://127.0.0.1/*` and `https://yoursite.com/*`
+
+2. Go to **Authentication → Users → Invite User** and enter your email address
+
+3. Click the magic link in the email — it redirects you back to your site and signs you in
+
+### Using admin mode
+
+Open the ✏️ toolbar. At the bottom you'll see an **Admin** section:
+
+- **Signed out** — enter your email and click "Send magic link", then click the link in your email
+- **Signed in** — your email is shown with a Sign out button; every annotation card now has a Delete button
+
+Admin state is stored in your browser by Supabase Auth. Closing the tab doesn't sign you out — use the Sign out button when done.
 
 ---
 

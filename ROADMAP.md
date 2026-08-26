@@ -85,6 +85,12 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
+## v0.7.1 — Auth Fix ✓
+
+- [x] Switch Supabase Auth to implicit flow (`flowType: 'implicit'`) so magic links work when opened in a different browser or email client (PKCE code verifier was not available cross-browser)
+
+---
+
 ## Future Ideas
 
 - Email digest via Supabase Edge Function
