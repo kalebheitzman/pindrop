@@ -146,6 +146,13 @@ A living document tracking what's done, what's next, and what's planned.
 
 ---
 
+## v0.9.2 — Resolve Ownership ✓
+
+- [x] Resolve button only shown to the annotation owner (matching `author_token` or `user_id`) or an admin
+- [x] Consistent with the existing delete ownership check
+
+---
+
 ## v1.0.0 — Production Ready
 
 - [ ] Export annotations as CSV (download all open/resolved annotations with author, page, comment, timestamp)

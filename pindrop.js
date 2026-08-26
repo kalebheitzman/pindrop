@@ -1,5 +1,5 @@
 /**
- * Pindrop v0.9.1 — drop-in design annotation tool
+ * Pindrop v0.9.2 — drop-in design annotation tool
  * Pins · Freehand drawing · Text highlights · Threaded comments
  * Backed by Supabase (free tier works great).
  * License: MIT + Commons Clause (free to use, not for resale)
@@ -1726,15 +1726,19 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       // Action row (resolve + delete)
       var actionsRow = mkEl('div', { class: 'pd-card-actions' });
 
-      var resolveBtn = mkEl('button', { class: 'pd-act-btn pd-act-resolve' + (ann.resolved ? ' pd-resolved' : '') });
-      resolveBtn.textContent = ann.resolved ? '✓ Resolved' : '✓ Resolve';
-      resolveBtn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        toggleResolve(ann, resolveBtn, card);
-      });
-      actionsRow.appendChild(resolveBtn);
+      var canOwn = ann.author_token === MY_TOKEN || (adminUser && ann.user_id === adminUser.id) || isAdminUser;
 
-      if (ann.author_token === MY_TOKEN || (adminUser && ann.user_id === adminUser.id) || isAdminUser) {
+      if (canOwn) {
+        var resolveBtn = mkEl('button', { class: 'pd-act-btn pd-act-resolve' + (ann.resolved ? ' pd-resolved' : '') });
+        resolveBtn.textContent = ann.resolved ? '✓ Resolved' : '✓ Resolve';
+        resolveBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          toggleResolve(ann, resolveBtn, card);
+        });
+        actionsRow.appendChild(resolveBtn);
+      }
+
+      if (canOwn) {
         var deleteBtn = mkEl('button', { class: 'pd-act-btn pd-act-delete' });
         deleteBtn.textContent = '🗑 Delete';
         deleteBtn.addEventListener('click', function (e) {
