@@ -1,5 +1,5 @@
 /**
- * Pindrop v0.9.4 — drop-in design annotation tool
+ * Pindrop v0.9.5 — drop-in design annotation tool
  * Pins · Threaded comments
  * Backed by Supabase (free tier works great).
  * License: MIT + Commons Clause (free to use, not for resale)

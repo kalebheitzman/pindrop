@@ -212,6 +212,21 @@ collapsed/hidden element.
 
 ---
 
+## v0.9.5 — Live Deploy ✓
+
+Version bump only — no code changes beyond the tag. Packages the v0.9.3 (pin-only scope-down +
+anchoring reliability) and v0.9.4 (selector-escaping fix) work as the version wired into the TCM
+site's production CDN script tag, replacing the local dev-mode script include used to iterate on
+both fixes.
+
+- [x] Verified via a full live resize/breakpoint test pass against the TCM homepage dev server —
+      every breakpoint from 1280 down to 375, plus a cold mobile load — before cutting this tag.
+      Full results in the `pindrop-v0.9.4-test-results-2026-09-03` project doc.
+- [x] `base.html.twig` swapped from the local dev-mode script tag back to the versioned jsDelivr
+      CDN tag (`pindrop@0.9.5`)
+
+---
+
 ## v1.0.0 — Production Ready
 
 - [ ] Export annotations as CSV (download all open/resolved annotations with author, page, comment, timestamp)
