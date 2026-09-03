@@ -1,12 +1,12 @@
 /**
- * Pindrop v0.9.2 — drop-in design annotation tool
- * Pins · Freehand drawing · Text highlights · Threaded comments
+ * Pindrop v0.9.3 — drop-in design annotation tool
+ * Pins · Threaded comments
  * Backed by Supabase (free tier works great).
  * License: MIT + Commons Clause (free to use, not for resale)
  *
  * Usage — add one script tag to any page:
  *
- *   <script src="pagenotes.js"
+ *   <script src="pindrop.min.js"
  *           data-supabase-url="https://xxxx.supabase.co"
  *           data-supabase-key="eyJ..."
  *           defer></script>
@@ -30,7 +30,7 @@
   var WEBHOOK_URL       = (_self && _self.getAttribute('data-webhook-url')) || null;
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    console.warn('[PageNotes] Missing data-supabase-url or data-supabase-key on <script> tag — not loading.');
+    console.warn('[Pindrop] Missing data-supabase-url or data-supabase-key on <script> tag — not loading.');
     return;
   }
 
@@ -47,11 +47,8 @@
 
   // ─── STATE ───────────────────────────────────────────────────────────────
   var db            = null;
-  var mode          = null;   // null | 'pin' | 'draw'
+  var mode          = null;   // null | 'pin'
   var activeColor   = '#ef4444';
-  var activeWidth   = 3;
-  var isDrawing     = false;
-  var currentPoints = [];
   var pending       = null;   // { data, tempPin? } — waiting for comment submission
   var annotations   = [];
   var activeAnnId   = null;   // currently focused annotation id (focus/dim mode)
@@ -59,32 +56,25 @@
   var pinSeqMap     = {};     // ann.id → display number
   var pinSeqNext    = 0;
   var tempPinSeq    = 0;      // for pins not yet saved
-  var drawStrokes   = [];     // accumulated strokes in current drawing session
-  var lastDrawVP    = null;   // last viewport coords of a completed stroke
   var realtimeChannel        = null;  // Supabase Realtime channel
   var realtimeConnected      = false; // true when channel is SUBSCRIBED
   var realtimeEverSubscribed = false; // true after first successful subscribe
   var cursors       = {};     // token → { el, hideTimer }
   var adminUser     = null;   // Supabase Auth user when signed in
   var isAdminUser   = false;  // true when signed-in user has profiles.is_admin = true
+  var repositionTimer = null; // debounce handle for resize/reflow-triggered repositioning
 
   // Sidebar filter/sort state
-  var sbFilterType   = null;      // null | 'pin' | 'drawing' | 'highlight'
   var sbFilterStatus = null;      // null | 'open' | 'resolved'
   var sbFilterAuthor = null;      // null | string
   var sbSearch       = '';
   var sbSort         = 'newest';  // 'newest' | 'oldest' | 'unresolved'
 
-  // DOM refs
-  var canvas, ctx, svgLayer;
-
   // ─── DOM FINGERPRINT ─────────────────────────────────────────────────────
   /**
    * Compute a short fingerprint of the DOM context around an annotation.
    * Stored at creation time; compared on load to detect page structure changes.
-   *   pin      → anchored element tagName + textContent (first 200 chars)
-   *   highlight → selected text (checked for existence in body text)
-   *   drawing  → page title + first <h1> text
+   *   pin → anchored element tagName + textContent (first 200 chars)
    */
   function computeFingerprint(ann) {
     try {
@@ -93,16 +83,6 @@
         var el = document.querySelector(ann.anchor.selector);
         if (!el) return '__element_missing__';
         return el.tagName + '|' + el.textContent.trim().slice(0, 200);
-      }
-      if (ann.type === 'highlight') {
-        var sel = ann.paths && ann.paths[0] && ann.paths[0].sel;
-        if (!sel) return null;
-        var bodyText = document.body ? (document.body.innerText || '') : '';
-        return bodyText.indexOf(sel) !== -1 ? sel : '__text_missing__';
-      }
-      if (ann.type === 'drawing') {
-        var h1 = document.querySelector('h1');
-        return 'draw|' + document.title + '|' + (h1 ? h1.textContent.trim().slice(0, 100) : '');
       }
     } catch (e) {}
     return null;
@@ -140,22 +120,43 @@
       injectStyles();
       buildToolbar();
       buildPopover();
-      buildCanvas();
-      buildSVGLayer();
+      setupInteractions();
       buildSidebar();
       buildIdentityPrompt();
       loadAnnotations();
       setupRealtime();
       setupReconnectHandlers();
       setupAuth();
-      window.addEventListener('resize', function () {
-        canvas.width  = window.innerWidth;
-        canvas.height = window.innerHeight;
-        syncSVGSize();
-        repositionPins();
-      });
+      setupResizeHandling();
     };
     document.head.appendChild(s);
+  }
+
+  // ─── RESIZE / REFLOW HANDLING ───────────────────────────────────────────
+  /**
+   * Pins are re-derived from their element anchor whenever the layout might
+   * have changed — not just on a literal window resize. A window resize is
+   * the obvious trigger (desktop-to-mobile viewport change), but content can
+   * also reflow without one firing at all (a web font swapping in, a lazy
+   * image finishing load, an accordion opening) — a ResizeObserver on the
+   * document catches those too. Debounced so a drag-resize or a burst of
+   * layout shifts doesn't recompute on every frame.
+   */
+  function scheduleReposition() {
+    if (repositionTimer) clearTimeout(repositionTimer);
+    repositionTimer = setTimeout(function () {
+      repositionTimer = null;
+      repositionPins();
+    }, 120);
+  }
+
+  function setupResizeHandling() {
+    window.addEventListener('resize', scheduleReposition);
+    window.addEventListener('orientationchange', scheduleReposition);
+    if (window.ResizeObserver) {
+      var ro = new ResizeObserver(scheduleReposition);
+      ro.observe(document.documentElement);
+    }
   }
 
   // ─── STYLES ──────────────────────────────────────────────────────────────
@@ -201,16 +202,6 @@
 }\
 .pd-swatch:hover         { transform: scale(1.2); }\
 .pd-swatch.pd-active   { border-color: #1e1b4b; transform: scale(1.12); }\
-.pd-widths { display: flex; gap: 6px; align-items: center; }\
-.pd-w {\
-  flex: 1; border: 2px solid #e2e8f0; border-radius: 9px; padding: 8px 4px;\
-  cursor: pointer; background: white;\
-  display: flex; align-items: center; justify-content: center;\
-  transition: all .15s;\
-}\
-.pd-w:hover        { border-color: #4f46e5; }\
-.pd-w.pd-active  { border-color: #4f46e5; background: #ede9fe; }\
-.pd-w span { display: block; background: #1e1b4b; border-radius: 99px; width: 70%; }\
 .pd-divider { height: 1px; background: #f1f5f9; }\
 .pd-btn {\
   width: 100%; padding: 8px; border: none; border-radius: 9px;\
@@ -218,19 +209,6 @@
   color: #475569; cursor: pointer; transition: background .15s;\
 }\
 .pd-btn:hover { background: #e2e8f0; }\
-\
-/* ── Canvas ── */\
-#pd-canvas {\
-  position: fixed; top: 0; left: 0; width: 100%; height: 100%;\
-  z-index: 9999; pointer-events: none;\
-}\
-#pd-canvas.pd-draw { pointer-events: all; cursor: crosshair; }\
-\
-/* ── SVG persisted drawings ── */\
-#pd-svg {\
-  position: absolute; top: 0; left: 0;\
-  z-index: 9998; overflow: visible;\
-}\
 \
 /* ── Pins ── */\
 .pd-pin {\
@@ -250,6 +228,7 @@
   box-shadow: 0 4px 16px rgba(0,0,0,.4);\
 }\
 .pd-pin-num { transform: rotate(45deg); color: white; font-size: 11px; font-weight: 800; }\
+.pd-pin-approx .pd-pin-dot { border-style: dashed; opacity: .6; }\
 \
 /* ── Comment popover ── */\
 #pd-pop {\
@@ -337,13 +316,7 @@
   border-radius: 5px; text-transform: uppercase; letter-spacing: .05em;\
 }\
 .pd-badge-pin  { background: #ede9fe; color: #4f46e5; }\
-.pd-badge-draw { background: #fee2e2; color: #dc2626; }\
-.pd-badge-hl   { background: #fef9c3; color: #a16207; }\
-.pd-hl-snip {\
-  font-size: 12px; color: #78350f; font-style: italic;\
-  background: #fef9c3; border-left: 3px solid #eab308;\
-  padding: 4px 8px; border-radius: 4px; margin-bottom: 4px;\
-}\
+.pd-badge-approx { background: #fef3c7; color: #b45309; }\
 .pd-card-author { font-size: 12px; font-weight: 700; color: #334155; }\
 .pd-card-time   { font-size: 11px; color: #94a3b8; margin-left: auto; }\
 .pd-outdated-badge { font-size: 10px; font-weight: 700; color: #b45309; background: #fef3c7; border: 1.5px solid #fcd34d; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }\
@@ -434,25 +407,6 @@
 .pd-card.pd-card-resolved .pd-card-comment,\
 .pd-card.pd-card-resolved .pd-card-empty { text-decoration: line-through; }\
 \
-/* ── Highlights ── */\
-.pd-highlight {\
-  position: absolute; z-index: 9997;\
-  pointer-events: all; cursor: pointer;\
-  border-radius: 2px; mix-blend-mode: multiply;\
-  transition: opacity .2s;\
-}\
-\
-/* ── Draw done button ── */\
-#pd-draw-done {\
-  position: fixed; z-index: 10005;\
-  background: #4f46e5; color: white; border: none; border-radius: 9px;\
-  padding: 8px 16px; font-size: 13px; font-weight: 700; cursor: pointer;\
-  box-shadow: 0 4px 16px rgba(79,70,229,.4); display: none;\
-  animation: pd-slide-up .18s ease;\
-}\
-#pd-draw-done.pd-visible { display: block; }\
-#pd-draw-done:hover { background: #4338ca; }\
-\
 /* ── Inline edit ── */\
 .pd-edit-btn {\
   background: none; border: none; cursor: pointer;\
@@ -483,8 +437,6 @@
 \
 /* ── Body cursor overrides ── */\
 body.pd-pin-cursor, body.pd-pin-cursor * { cursor: crosshair !important; }\
-body.pd-draw-cursor #pd-canvas { cursor: crosshair; }\
-body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
 \
 /* ── Live cursors ── */\
 .pd-cursor { position: fixed; pointer-events: none; z-index: 10010; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; transform: translate(-2px, -2px); }\
@@ -536,16 +488,14 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     // Panel
     var panel = mkEl('div', { id: 'pd-panel' });
 
-    // Tool buttons
+    // Tool button
     var toolLabel = mkEl('p', { class: 'pd-label' }); toolLabel.textContent = 'Tool';
     var toolRow = mkEl('div', { class: 'pd-tools' });
-    var pinBtn  = mkEl('button', { class: 'pd-tool', id: 'pd-pin-btn' });       pinBtn.textContent  = '📍 Pin';
-    var drawBtn = mkEl('button', { class: 'pd-tool', id: 'pd-draw-btn' });      drawBtn.textContent = '✏️ Draw';
-    var hlBtn   = mkEl('button', { class: 'pd-tool', id: 'pd-highlight-btn' }); hlBtn.textContent   = '🖍 Highlight';
-    pinBtn.addEventListener('click',  function () { setMode('pin');       });
-    drawBtn.addEventListener('click', function () { setMode('draw');      });
-    hlBtn.addEventListener('click',   function () { setMode('highlight'); });
-    toolRow.appendChild(pinBtn); toolRow.appendChild(drawBtn); toolRow.appendChild(hlBtn);
+    var pinBtn  = mkEl('button', { class: 'pd-tool', id: 'pd-pin-btn' }); pinBtn.textContent = '📍 Pin';
+    pinBtn.addEventListener('click', function () {
+      setMode(mode === 'pin' ? null : 'pin');
+    });
+    toolRow.appendChild(pinBtn);
 
     // Color swatches
     var colorLabel = mkEl('p', { class: 'pd-label' }); colorLabel.textContent = 'Color';
@@ -559,21 +509,6 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
         activeColor = c;
       });
       colorRow.appendChild(sw);
-    });
-
-    // Line weight
-    var wLabel = mkEl('p', { class: 'pd-label' }); wLabel.textContent = 'Weight';
-    var wRow   = mkEl('div', { class: 'pd-widths' });
-    [{ w: 3, h: '2px' }, { w: 6, h: '5px' }, { w: 12, h: '9px' }].forEach(function (item, i) {
-      var btn = mkEl('button', { class: 'pd-w' + (i === 0 ? ' pd-active' : ''), 'data-w': item.w });
-      var bar = mkEl('span'); bar.style.height = item.h;
-      btn.appendChild(bar);
-      btn.addEventListener('click', function () {
-        wRow.querySelectorAll('.pd-w').forEach(function (b) { b.classList.remove('pd-active'); });
-        btn.classList.add('pd-active');
-        activeWidth = item.w;
-      });
-      wRow.appendChild(btn);
     });
 
     // View button
@@ -635,7 +570,6 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
 
     [toolLabel, toolRow, mkEl('div', { class: 'pd-divider' }),
      colorLabel, colorRow,
-     wLabel, wRow,
      div1, viewersEl, viewBtn,
      adminDiv, adminLabel, adminForm, adminActive
     ].forEach(function (node) { panel.appendChild(node); });
@@ -659,19 +593,11 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
 
   function setMode(m) {
     mode = m;
-    document.body.classList.remove('pd-pin-cursor', 'pd-draw-cursor', 'pd-hl-cursor');
+    document.body.classList.remove('pd-pin-cursor');
     document.querySelectorAll('.pd-tool').forEach(function (b) { b.classList.remove('pd-active'); });
-    canvas.classList.remove('pd-draw');
     if (m === 'pin') {
       document.body.classList.add('pd-pin-cursor');
       document.getElementById('pd-pin-btn').classList.add('pd-active');
-    } else if (m === 'draw') {
-      document.body.classList.add('pd-draw-cursor');
-      document.getElementById('pd-draw-btn').classList.add('pd-active');
-      canvas.classList.add('pd-draw');
-    } else if (m === 'highlight') {
-      document.body.classList.add('pd-hl-cursor');
-      document.getElementById('pd-highlight-btn').classList.add('pd-active');
     }
   }
 
@@ -743,10 +669,6 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
         return;
       }
       if (pending && pending.tempPin) pending.tempPin.remove();
-      drawStrokes   = [];
-      currentPoints = [];
-      lastDrawVP    = null;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
       annotations.push(result.data);
       renderAnnotation(result.data);
       updateCount();
@@ -761,34 +683,11 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       pending.tempPin.remove();
       tempPinSeq = Math.max(0, tempPinSeq - 1);
     }
-    drawStrokes   = [];
-    currentPoints = [];
-    isDrawing     = false;
-    lastDrawVP    = null;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    hideDrawDoneBtn();
     hidePopover();
   }
 
-  // ─── CANVAS (active drawing) ──────────────────────────────────────────────
-  function buildCanvas() {
-    canvas        = mkEl('canvas', { id: 'pd-canvas' });
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
-    ctx = canvas.getContext('2d');
-    document.body.appendChild(canvas);
-
-    // Done button for multi-stroke drawings
-    var doneBtn = mkEl('button', { id: 'pd-draw-done' });
-    doneBtn.textContent = '✓ Done';
-    doneBtn.addEventListener('click', function (e) { e.stopPropagation(); confirmDrawing(); });
-    document.body.appendChild(doneBtn);
-
-    canvas.addEventListener('mousedown',  onDrawStart);
-    canvas.addEventListener('mousemove',  onDrawMove);
-    canvas.addEventListener('mouseup',    onDrawEnd);
-    canvas.addEventListener('mouseleave', function (e) { if (isDrawing) onDrawEnd(e); });
-
+  // ─── INTERACTIONS ─────────────────────────────────────────────────────────
+  function setupInteractions() {
     // Keyboard shortcuts
     document.addEventListener('keydown', function (e) {
       var tag = (document.activeElement && document.activeElement.tagName) || '';
@@ -797,25 +696,13 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
         if (document.getElementById('pd-pop').classList.contains('pd-open')) {
           cancelAnnotation(); return;
         }
-        if (drawStrokes.length) { cancelAnnotation(); return; }
         var sb = document.getElementById('pd-sidebar');
         if (sb && sb.classList.contains('pd-open')) { toggleSidebar(); return; }
         setMode(null);
         return;
       }
       if (inInput) return;
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-        if (drawStrokes.length) {
-          e.preventDefault();
-          drawStrokes.pop();
-          if (drawStrokes.length === 0) { hideDrawDoneBtn(); lastDrawVP = null; }
-          redrawCanvas();
-        }
-        return;
-      }
-      if (e.key === 'p' || e.key === 'P') { setMode('pin'); return; }
-      if (e.key === 'd' || e.key === 'D') { setMode('draw'); return; }
-      if (e.key === 'h' || e.key === 'H') { setMode('highlight'); return; }
+      if (e.key === 'p' || e.key === 'P') { setMode(mode === 'pin' ? null : 'pin'); return; }
       if (e.key === 't' || e.key === 'T') { togglePanel(); return; }
       if (e.key === 'a' || e.key === 'A') { toggleSidebar(); return; }
     });
@@ -833,129 +720,9 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     document.addEventListener('click', function (e) {
       if (!activeAnnId) return;
       if (isOurs(e.target)) return;
-      if (e.target.closest('.pd-pin') || e.target.closest('.pd-highlight')) return;
+      if (e.target.closest('.pd-pin')) return;
       clearFocus();
     }, false);
-
-    // Highlight — fires after user finishes a text selection
-    document.addEventListener('mouseup', function (e) {
-      if (mode !== 'highlight') return;
-      if (isOurs(e.target)) return;
-      var sel = window.getSelection();
-      if (!sel || sel.isCollapsed || !sel.rangeCount) return;
-      var range = sel.getRangeAt(0);
-      var clientRects = Array.prototype.slice.call(range.getClientRects());
-      if (!clientRects.length) return;
-      var text = sel.toString().trim();
-      if (!text) return;
-      sel.removeAllRanges();
-
-      var docRects = clientRects.map(function (r, i) {
-        var obj = { x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height };
-        if (i === 0) obj.sel = text.slice(0, 300);
-        return obj;
-      });
-      pending = { data: { type: 'highlight', paths: docRects, color: activeColor } };
-      showPopover(e.clientX, e.clientY, '🖍 Highlight');
-    });
-  }
-
-  function onDrawStart(e) {
-    if (mode !== 'draw') return;
-    isDrawing = true;
-    currentPoints = [docPt(e)];
-    ctx.beginPath();
-    ctx.moveTo(e.clientX, e.clientY);
-    applyCtxStyle();
-  }
-
-  function onDrawMove(e) {
-    if (!isDrawing || mode !== 'draw') return;
-    currentPoints.push(docPt(e));
-    ctx.lineTo(e.clientX, e.clientY);
-    ctx.stroke();
-  }
-
-  function onDrawEnd(e) {
-    if (!isDrawing || mode !== 'draw') return;
-    isDrawing = false;
-    if (currentPoints.length < 4) {
-      currentPoints = [];
-      redrawCanvas();
-      return;
-    }
-    drawStrokes.push({ points: currentPoints.slice(), color: activeColor, width: activeWidth });
-    currentPoints = [];
-    var lastPt = drawStrokes[drawStrokes.length - 1].points.slice(-1)[0];
-    lastDrawVP = { x: lastPt.x - window.scrollX, y: lastPt.y - window.scrollY };
-    redrawCanvas();
-    showDrawDoneBtn();
-  }
-
-  function redrawCanvas() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawStrokes.forEach(function (s) {
-      ctx.beginPath();
-      s.points.forEach(function (pt, i) {
-        var vx = pt.x - window.scrollX;
-        var vy = pt.y - window.scrollY;
-        if (i === 0) ctx.moveTo(vx, vy); else ctx.lineTo(vx, vy);
-      });
-      ctx.strokeStyle = s.color;
-      ctx.lineWidth   = s.width;
-      ctx.lineCap     = 'round';
-      ctx.lineJoin    = 'round';
-      ctx.stroke();
-    });
-  }
-
-  function showDrawDoneBtn() {
-    var btn = document.getElementById('pd-draw-done');
-    if (!btn) return;
-    btn.classList.add('pd-visible');
-    if (lastDrawVP) {
-      btn.style.left = Math.min(lastDrawVP.x + 14, window.innerWidth - 120) + 'px';
-      btn.style.top  = Math.max(lastDrawVP.y - 44, 10) + 'px';
-    }
-  }
-
-  function hideDrawDoneBtn() {
-    var btn = document.getElementById('pd-draw-done');
-    if (btn) btn.classList.remove('pd-visible');
-  }
-
-  function confirmDrawing() {
-    if (!drawStrokes.length) return;
-    pending = { data: { type: 'drawing', paths: drawStrokes.slice() } };
-    hideDrawDoneBtn();
-    var vp = lastDrawVP || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    showPopover(vp.x, vp.y, 'Add a comment (optional)');
-  }
-
-  function applyCtxStyle() {
-    ctx.strokeStyle = activeColor;
-    ctx.lineWidth   = activeWidth;
-    ctx.lineCap     = 'round';
-    ctx.lineJoin    = 'round';
-  }
-
-  // ─── SVG LAYER (persisted drawings) ──────────────────────────────────────
-  function buildSVGLayer() {
-    svgLayer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svgLayer.id = 'pd-svg';
-    // SVG attribute (not CSS) — lets children override while the container itself passes through
-    svgLayer.setAttribute('pointer-events', 'none');
-    syncSVGSize();
-    document.body.appendChild(svgLayer);
-  }
-
-  function syncSVGSize() {
-    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, window.innerHeight);
-    var w = Math.max(document.body.scrollWidth,  document.documentElement.scrollWidth,  window.innerWidth);
-    svgLayer.setAttribute('width',  w);
-    svgLayer.setAttribute('height', h);
-    svgLayer.style.width  = w + 'px';
-    svgLayer.style.height = h + 'px';
   }
 
   // ─── PINS ─────────────────────────────────────────────────────────────────
@@ -984,73 +751,21 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
 
   // ─── RENDER ANNOTATION ────────────────────────────────────────────────────
   function renderAnnotation(ann) {
-    if (ann.type === 'pin') {
-      var n   = getPinNum(ann.id);
-      var pos = resolveAnchor(ann);
-      var pin = makePinEl(n, pos.x, pos.y, ann.color || '#4f46e5');
-      pin.dataset.id = ann.id;
-      pin.title = (ann.author_name || 'Anonymous') + ': ' + (ann.comment || '(no comment)');
-      if (ann.resolved) pin.style.opacity = '0.4';
-      pin.addEventListener('click', function (e) {
-        e.stopPropagation();
-        openSidebarTo(ann.id);
-      });
-      document.body.appendChild(pin);
-
-    } else if (ann.type === 'highlight' && ann.paths && ann.paths.length) {
-      ann.paths.forEach(function (r) {
-        var el = mkEl('div', { class: 'pd-highlight' });
-        el.style.left       = r.x + 'px';
-        el.style.top        = r.y + 'px';
-        el.style.width      = r.w + 'px';
-        el.style.height     = r.h + 'px';
-        el.style.background = hexToRgba(ann.color || '#eab308', 0.35);
-        el.dataset.id       = ann.id;
-        if (ann.resolved) el.style.opacity = '0.3';
-        el.addEventListener('click', function (e) {
-          e.stopPropagation();
-          openSidebarTo(ann.id);
-        });
-        document.body.appendChild(el);
-      });
-
-    } else if (ann.type === 'drawing' && ann.paths) {
-      ann.paths.forEach(function (path) {
-        var d = path.points.map(function (pt, i) {
-          return (i === 0 ? 'M' : 'L') + ' ' + pt.x + ' ' + pt.y;
-        }).join(' ');
-
-        // Visible stroke — no pointer events of its own
-        var p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        p.setAttribute('d', d);
-        p.setAttribute('stroke', path.color || '#ef4444');
-        p.setAttribute('stroke-width', path.width || 3);
-        p.setAttribute('fill', 'none');
-        p.setAttribute('stroke-linecap', 'round');
-        p.setAttribute('stroke-linejoin', 'round');
-        p.setAttribute('pointer-events', 'none');
-        p.setAttribute('data-id', ann.id);
-        svgLayer.appendChild(p);
-
-        // Invisible wider hit area — captures clicks on the drawing
-        var hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        hit.setAttribute('d', d);
-        hit.setAttribute('stroke', 'transparent');
-        hit.setAttribute('stroke-width', Math.max((path.width || 3) + 14, 16));
-        hit.setAttribute('fill', 'none');
-        hit.setAttribute('stroke-linecap', 'round');
-        hit.setAttribute('stroke-linejoin', 'round');
-        hit.setAttribute('pointer-events', 'stroke');
-        hit.style.cursor = 'pointer';
-        hit.setAttribute('data-id', ann.id);
-        hit.addEventListener('click', function (e) {
-          e.stopPropagation();
-          openSidebarTo(ann.id);
-        });
-        svgLayer.appendChild(hit);
-      });
-      syncSVGSize();
-    }
+    if (ann.type !== 'pin') return;
+    var n   = getPinNum(ann.id);
+    var pos = resolveAnchor(ann);
+    var pin = makePinEl(n, pos.x, pos.y, ann.color || '#4f46e5');
+    pin.dataset.id = ann.id;
+    pin.classList.toggle('pd-pin-approx', !pos.resolved);
+    var title = (ann.author_name || 'Anonymous') + ': ' + (ann.comment || '(no comment)');
+    pin.title = pos.resolved ? title
+      : title + ' (position approximate — the marked content is hidden or has moved at this screen size)';
+    if (ann.resolved) pin.style.opacity = '0.4';
+    pin.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openSidebarTo(ann.id);
+    });
+    document.body.appendChild(pin);
   }
 
   function getPinNum(id) {
@@ -1272,8 +987,6 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
 
   function removeAnnotationDOM(id) {
     document.querySelectorAll('.pd-pin[data-id="' + id + '"]').forEach(function (el) { el.remove(); });
-    document.querySelectorAll('.pd-highlight[data-id="' + id + '"]').forEach(function (el) { el.remove(); });
-    svgLayer.querySelectorAll('[data-id="' + id + '"]').forEach(function (el) { el.remove(); });
   }
 
   function updateCursor(token, xPct, yPct, name, color, tool) {
@@ -1290,7 +1003,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     var label = el.querySelector('.pd-cursor-name');
     if (dot) dot.style.background = color || '#4f46e5';
     if (label) {
-      var toolIcon = tool === 'pin' ? '📍' : tool === 'draw' ? '✏️' : tool === 'highlight' ? '🖍️' : '';
+      var toolIcon = tool === 'pin' ? '📍' : '';
       label.textContent = (toolIcon ? toolIcon + ' ' : '') + (name || 'Someone');
     }
     el.style.left    = (xPct * window.innerWidth)  + 'px';
@@ -1425,12 +1138,6 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
         '</div>',
         '<div id="pd-sb-filters-body">',
           '<input id="pd-sb-search" class="pd-sb-search" type="text" placeholder="Search…">',
-          '<div class="pd-sb-chips" id="pd-sb-type-chips">',
-            '<button class="pd-sb-chip pd-active" data-type="">All</button>',
-            '<button class="pd-sb-chip" data-type="pin">📍 Pin</button>',
-            '<button class="pd-sb-chip" data-type="drawing">✏️ Draw</button>',
-            '<button class="pd-sb-chip" data-type="highlight">🖍 Hi</button>',
-          '</div>',
           '<div class="pd-sb-row">',
             '<div class="pd-sb-chips" id="pd-sb-status-chips">',
               '<button class="pd-sb-chip pd-active" data-status="">All</button>',
@@ -1464,16 +1171,6 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     // Search
     document.getElementById('pd-sb-search').addEventListener('input', function () {
       sbSearch = this.value.trim().toLowerCase();
-      renderSidebarList();
-    });
-
-    // Type chips
-    document.getElementById('pd-sb-type-chips').addEventListener('click', function (e) {
-      var btn = e.target.closest('.pd-sb-chip');
-      if (!btn) return;
-      this.querySelectorAll('.pd-sb-chip').forEach(function (b) { b.classList.remove('pd-active'); });
-      btn.classList.add('pd-active');
-      sbFilterType = btn.dataset.type || null;
       renderSidebarList();
     });
 
@@ -1521,14 +1218,6 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     document.querySelectorAll('.pd-pin').forEach(function (el) {
       el.style.opacity = el.dataset.id === annId ? '' : '0.1';
     });
-    // Dim all highlights
-    document.querySelectorAll('.pd-highlight').forEach(function (el) {
-      el.style.opacity = el.dataset.id === annId ? '' : '0.08';
-    });
-    // Dim all SVG drawing paths
-    svgLayer.querySelectorAll('[data-id]').forEach(function (el) {
-      el.style.opacity = el.getAttribute('data-id') === annId ? '' : '0.1';
-    });
     // Focus the sidebar card
     document.querySelectorAll('.pd-card').forEach(function (card) {
       card.classList.toggle('pd-card-focused', card.dataset.id === annId);
@@ -1541,13 +1230,6 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     document.querySelectorAll('.pd-pin').forEach(function (el) {
       var ann = annotations.find(function (a) { return a.id === el.dataset.id; });
       el.style.opacity = (ann && ann.resolved) ? '0.4' : '';
-    });
-    document.querySelectorAll('.pd-highlight').forEach(function (el) {
-      var ann = annotations.find(function (a) { return a.id === el.dataset.id; });
-      el.style.opacity = (ann && ann.resolved) ? '0.3' : '';
-    });
-    svgLayer.querySelectorAll('[data-id]').forEach(function (el) {
-      el.style.opacity = '';
     });
     // Clear focused card
     document.querySelectorAll('.pd-card-focused').forEach(function (card) {
@@ -1604,7 +1286,6 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
 
     // Filter
     var visible = annotations.filter(function (ann) {
-      if (sbFilterType   && ann.type !== sbFilterType) return false;
       if (sbFilterStatus === 'open'     &&  ann.resolved) return false;
       if (sbFilterStatus === 'resolved' && !ann.resolved) return false;
       if (sbFilterAuthor && ann.author_name !== sbFilterAuthor) return false;
@@ -1634,9 +1315,9 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
 
     sorted.forEach(function (ann) {
       var card    = mkEl('div', { class: 'pd-card pd-collapsed', 'data-id': ann.id });
-      var isPin   = ann.type === 'pin';
-      var badgeLabel = isPin ? 'pd-badge-pin">Pin' : (ann.type === 'highlight' ? 'pd-badge-hl">Highlight' : 'pd-badge-draw">Drawing');
-      var badge   = '<span class="pd-badge ' + badgeLabel + '</span>';
+      var approx  = !resolveAnchor(ann).resolved;
+      var badge   = '<span class="pd-badge pd-badge-pin">Pin</span>' +
+        (approx ? '<span class="pd-badge pd-badge-approx" title="Hidden or moved at this screen size">Approx.</span>' : '');
       var t       = new Date(ann.created_at).toLocaleString([], {
         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
       });
@@ -1662,13 +1343,6 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
 
       // Collapsible body
       var body = mkEl('div', { class: 'pd-card-body' });
-
-      // Highlighted text snippet (for highlights)
-      if (ann.type === 'highlight' && ann.paths && ann.paths[0] && ann.paths[0].sel) {
-        var snip = mkEl('div', { class: 'pd-hl-snip' });
-        snip.textContent = '“' + ann.paths[0].sel.slice(0, 120) + (ann.paths[0].sel.length > 120 ? '…' : '') + '”';
-        body.appendChild(snip);
-      }
 
       // Comment + inline edit
       var commentEl = mkEl('div', { class: ann.comment ? 'pd-card-comment' : 'pd-card-empty' });
@@ -1810,12 +1484,9 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       card.classList.toggle('pd-card-resolved', newState);
       if (newState) { card.classList.add('pd-collapsed'); clearFocus(); }
       else card.classList.remove('pd-collapsed');
-      // Update pin/highlight opacity
+      // Update pin opacity
       var pin = document.querySelector('.pd-pin[data-id="' + ann.id + '"]');
       if (pin) pin.style.opacity = newState ? '0.4' : '';
-      document.querySelectorAll('.pd-highlight[data-id="' + ann.id + '"]').forEach(function (el) {
-        el.style.opacity = newState ? '0.3' : '';
-      });
     });
   }
 
@@ -1825,11 +1496,9 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       // Remove from arrays
       annotations = annotations.filter(function (a) { return a.id !== ann.id; });
       delete replies[ann.id];
-      // Remove pin/drawing/highlight from DOM
+      // Remove pin from DOM
       var pin = document.querySelector('.pd-pin[data-id="' + ann.id + '"]');
       if (pin) pin.remove();
-      svgLayer.querySelectorAll('[data-id="' + ann.id + '"]').forEach(function (el) { el.remove(); });
-      document.querySelectorAll('.pd-highlight[data-id="' + ann.id + '"]').forEach(function (el) { el.remove(); });
       // Remove card
       card.remove();
       updateCount();
@@ -1843,14 +1512,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
   }
 
   function jumpTo(ann) {
-    var y = 0;
-    if (ann.type === 'pin') {
-      y = resolveAnchor(ann).y;
-    } else if (ann.type === 'highlight' && ann.paths && ann.paths[0]) {
-      y = ann.paths[0].y;
-    } else if (ann.paths && ann.paths[0] && ann.paths[0].points[0]) {
-      y = ann.paths[0].points[0].y;
-    }
+    var y = resolveAnchor(ann).y;
     window.scrollTo({ top: Math.max(0, y - 200), behavior: 'smooth' });
   }
 
@@ -1866,27 +1528,14 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
     return node;
   }
 
-  function docPt(e) {
-    return { x: e.clientX + window.scrollX, y: e.clientY + window.scrollY };
-  }
-
   function isOurs(target) {
     if (!target || !target.closest) return false;
     return !!(
       target.closest('#pd-root')    ||
       target.closest('#pd-pop')     ||
       target.closest('#pd-sidebar') ||
-      target.closest('#pd-canvas')  ||
-      target.closest('.pd-pin')     ||
-      target.closest('.pd-highlight')
+      target.closest('.pd-pin')
     );
-  }
-
-  function hexToRgba(hex, alpha) {
-    var r = parseInt(hex.slice(1, 3), 16);
-    var g = parseInt(hex.slice(3, 5), 16);
-    var b = parseInt(hex.slice(5, 7), 16);
-    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
   }
 
   function esc(s) {
@@ -2012,21 +1661,32 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
   }
 
   /**
-   * Given a stored annotation, return {x, y} in document coordinates.
+   * Given a stored annotation, return {x, y, resolved} in document coordinates.
    * Uses the element anchor when available; falls back to x_doc/y_doc.
+   *
+   * `resolved` is false when the anchor can't be trusted at the current
+   * viewport — the anchored element is gone, or it (or an ancestor) is
+   * collapsed to zero size, which happens when it's hidden by a responsive
+   * breakpoint (e.g. a mobile-only or desktop-only block). Previously this
+   * case fell through to a raw `rect.left`/`rect.top` of (0, 0), which
+   * snapped the pin to the scroll origin instead of somewhere near the
+   * content. Now we keep the last known document position and flag it as
+   * approximate instead of asserting a wrong one.
    */
   function resolveAnchor(ann) {
-    var fallback = { x: ann.x_doc || 0, y: ann.y_doc || 0 };
+    var fallback = { x: ann.x_doc || 0, y: ann.y_doc || 0, resolved: false };
     if (!ann.anchor || !ann.anchor.selector) return fallback;
     try {
       var el = document.querySelector(ann.anchor.selector);
       if (!el) return fallback;
       var rect = el.getBoundingClientRect();
-      var cx   = rect.left + ann.anchor.offset_x_pct * rect.width;
-      var cy   = rect.top  + ann.anchor.offset_y_pct * rect.height;
+      if (rect.width === 0 || rect.height === 0) return fallback;
+      var cx = rect.left + ann.anchor.offset_x_pct * rect.width;
+      var cy = rect.top  + ann.anchor.offset_y_pct * rect.height;
       return {
         x: cx + window.scrollX,
         y: cy + window.scrollY,
+        resolved: true,
       };
     } catch (err) {
       return fallback;
@@ -2034,8 +1694,11 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
   }
 
   /**
-   * Reposition all rendered pins using their element anchor.
-   * Called on window resize.
+   * Reposition all rendered pins using their element anchor. Called on
+   * window resize, orientation change, and document-level reflow (see
+   * setupResizeHandling) — not just literal window resizes, so pins also
+   * catch up after content shifts without one (a lazy image finishing load,
+   * a font swap, an accordion opening).
    */
   function repositionPins() {
     annotations.forEach(function (ann) {
@@ -2045,6 +1708,7 @@ body.pd-hl-cursor, body.pd-hl-cursor * { cursor: text !important; }\
       var pos = resolveAnchor(ann);
       pin.style.left = pos.x + 'px';
       pin.style.top  = pos.y + 'px';
+      pin.classList.toggle('pd-pin-approx', !pos.resolved);
     });
   }
 

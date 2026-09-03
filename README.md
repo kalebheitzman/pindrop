@@ -1,7 +1,7 @@
 # Pindrop
 
 **Drop-in design annotation tool for any website.**  
-Leave pins, draw on the page, highlight text, and have threaded conversations — all wired to your own free Supabase database.
+Drop pins on the page and have threaded conversations — all wired to your own free Supabase database.
 
 ![Pindrop in action](screenshot.png)
 
@@ -10,19 +10,17 @@ Leave pins, draw on the page, highlight text, and have threaded conversations �
 ## Features
 
 - 📍 **Pins** — click anywhere to drop a numbered pin with a comment
-- ✏️ **Freehand drawing** — draw directly on the page (multi-stroke, Ctrl+Z to undo)
-- 🖍️ **Text highlights** — select any text to highlight and annotate it
 - 💬 **Threaded replies** — comment on any annotation
 - ✏️ **Edit** — update your own comments and replies inline
 - ✓ **Resolve** — mark feedback as done; resolved items collapse automatically
 - 🗑️ **Delete** — ownership via your account or localStorage token
 - 🎯 **Focus mode** — click any annotation to dim everything else
-- 📐 **Element anchoring** — pins reposition correctly across screen sizes
+- 📐 **Element anchoring** — pins reposition as the layout reflows (resize, rotation, or content changes), and flag themselves as approximate rather than jumping to the wrong spot when their anchored element is hidden at the current screen size
 - 🔴 **Live cursors** — see other reviewers' cursors in real time
 - 👁️ **Presence** — viewer count shows how many people are on the page
 - 🔔 **Webhooks** — POST to any URL on new annotation or reply (Teams, Slack, Zapier…)
 - ⚠️ **Page-change awareness** — annotations flagged as outdated when the page content around them changes
-- ⌨️ **Keyboard shortcuts** — T = toolbar, P = pin, D = draw, H = highlight, A = annotations, Shift+Enter = submit, Esc = cancel
+- ⌨️ **Keyboard shortcuts** — T = toolbar, P = pin, A = annotations, Shift+Enter = submit, Esc = cancel
 - 🔒 **Your data** — everything goes to your own Supabase project
 - 🔑 **Identity** — sign in with your email via magic link; ownership and admin status persist across devices
 - 👑 **Admin** — admins can delete any annotation regardless of who posted it
@@ -45,7 +43,7 @@ In Supabase: **Settings → API**
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/gh/kalebheitzman/pindrop@0.8.1/pindrop.min.js"
+  src="https://cdn.jsdelivr.net/gh/kalebheitzman/pindrop@0.9.3/pindrop.min.js"
   data-supabase-url="https://YOUR_PROJECT_ID.supabase.co"
   data-supabase-key="eyJ..."
   defer
@@ -75,11 +73,8 @@ Shortcuts are ignored when focus is in an input or textarea.
 | Key | Action |
 |-----|--------|
 | `T` | Toggle the toolbar panel open/closed |
-| `P` | Switch to pin mode |
-| `D` | Switch to draw mode |
-| `H` | Switch to highlight mode |
+| `P` | Toggle pin mode |
 | `A` | Toggle the annotations sidebar |
-| `Ctrl+Z` | Undo the last drawing stroke |
 | `Shift+Enter` | Submit a comment or reply |
 | `Esc` | Cancel current action / close sidebar |
 
@@ -135,13 +130,13 @@ Sign-in state is stored in your browser by Supabase Auth. Closing the tab doesn'
 
 ## How it works
 
-Pindrop is a single self-contained JavaScript file with no build step and no framework dependencies. It lazy-loads the Supabase JS client from jsDelivr, then wires everything up — toolbar, canvas overlay, SVG layer, sidebar — entirely in vanilla JS.
+Pindrop is a single self-contained JavaScript file with no build step and no framework dependencies. It lazy-loads the Supabase JS client from jsDelivr, then wires everything up — toolbar, popover, sidebar — entirely in vanilla JS.
 
 **Anonymous ownership** — on first visit a random token is generated and stored in `localStorage`. This token is saved with every annotation you create, and the Delete button only appears on annotations that match your token.
 
-**Element anchoring** — pins store a CSS selector path to the DOM element they were placed on, plus a percentage offset within that element. On resize or reload, the pin repositions itself relative to the element rather than using absolute pixel coordinates.
+**Element anchoring** — pins store a CSS selector path to the DOM element they were placed on, plus a percentage offset within that element. The pin's position is re-derived from that selector and offset on load and whenever the layout might have changed — a window resize, an orientation change, or a `ResizeObserver`-detected reflow such as a lazy image finishing load or a web font swapping in — rather than using fixed pixel coordinates. If the anchored element is missing, or collapsed to zero size because it's hidden at the current screen size (common with responsive layouts that swap markup by breakpoint), the pin keeps its last known position instead of jumping to the top-left corner, and renders with a dashed outline (`pd-pin-approx`) plus an "Approx." badge in the sidebar so it's clear the position isn't confirmed at that viewport.
 
-**Page-change awareness** — when an annotation is created, Pindrop captures a lightweight DOM fingerprint: the text content of the pinned element, the highlighted text, or the page title/heading for drawings. On every load it recomputes the fingerprint and compares it to the stored value. If they differ — the element's text changed, the highlighted passage was removed, or the heading was renamed — the annotation is marked with a ⚠ Outdated badge in the sidebar so reviewers know the feedback may no longer apply to that exact spot.
+**Page-change awareness** — when a pin is created, Pindrop captures a lightweight DOM fingerprint: the text content of the pinned element. On every load it recomputes the fingerprint and compares it to the stored value. If it differs — the element's text changed — the annotation is marked with a ⚠ Outdated badge in the sidebar so reviewers know the feedback may no longer apply to that exact spot.
 
 ---
 

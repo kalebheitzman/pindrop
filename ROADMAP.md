@@ -7,13 +7,13 @@ A living document tracking what's done, what's next, and what's planned.
 ## v0.1.x — Foundation ✓
 
 - [x] Pin annotations with comments
-- [x] Freehand drawing
-- [x] Text highlight annotations
+- [x] Freehand drawing *(removed in v0.9.3)*
+- [x] Text highlight annotations *(removed in v0.9.3)*
 - [x] Threaded replies
 - [x] Resolve / collapse annotations
 - [x] Delete (anonymous ownership via localStorage token)
 - [x] Focus / dim mode
-- [x] Element anchoring (pins reposition across screen sizes)
+- [x] Element anchoring (pins reposition across screen sizes) *(had real gaps on resize and mobile — fixed in v0.9.3)*
 - [x] Name prompt on first load
 - [x] Drop-in script tag install (`data-supabase-url`, `data-supabase-key`)
 - [x] 10-color palette
@@ -23,8 +23,8 @@ A living document tracking what's done, what's next, and what's planned.
 ## v0.2.x — Edit & Undo ✓
 
 - [x] Edit a comment or reply after posting
-- [x] Drawing undo (Ctrl+Z removes last stroke)
-- [x] Keyboard shortcuts (P = pin, D = draw, H = highlight, Esc = cancel)
+- [x] Drawing undo (Ctrl+Z removes last stroke) *(removed in v0.9.3 along with drawing)*
+- [x] Keyboard shortcuts (P = pin, D = draw, H = highlight, Esc = cancel) *(D/H removed in v0.9.3)*
 
 ---
 
@@ -45,7 +45,7 @@ A living document tracking what's done, what's next, and what's planned.
 
 ## v0.5.0 — Sidebar Power-ups ✓
 
-- [x] Filter by type (pin / drawing / highlight)
+- [x] Filter by type (pin / drawing / highlight) *(type filter removed in v0.9.3 — only pins remain)*
 - [x] Filter by status (open / resolved)
 - [x] Filter by author
 - [x] Search annotations by comment text
@@ -140,7 +140,7 @@ A living document tracking what's done, what's next, and what's planned.
 
 ## v0.9.1 — Cursor Polish ✓
 
-- [x] Cursor label shows the active tool as an emoji prefix (📍 pin · ✏️ draw · 🖍️ highlight)
+- [x] Cursor label shows the active tool as an emoji prefix (📍 pin · ✏️ draw · 🖍️ highlight) *(draw/highlight prefixes removed in v0.9.3)*
 - [x] Label falls back to just the name when no tool is active
 - [x] Tool broadcasted alongside name, color, and position in the cursor payload
 
@@ -150,6 +150,39 @@ A living document tracking what's done, what's next, and what's planned.
 
 - [x] Resolve button only shown to the annotation owner (matching `author_token` or `user_id`) or an admin
 - [x] Consistent with the existing delete ownership check
+
+---
+
+## v0.9.3 — Pin-Only Focus & Anchoring Reliability ✓
+
+Freehand drawing and text highlights were never built to survive a resize — they stored raw
+document-pixel coordinates at creation time and were never re-derived afterward, so any layout
+change (a window resize, and *especially* opening on a different device) left them visually
+detached from the content they were meant to mark. Pins were the only annotation type with any
+anchoring mechanism (a CSS selector + percentage offset, recomputed on load/resize), so rather than
+build that same mechanism twice more for drawing and highlighting, this release drops both and
+puts the effort into making pin anchoring actually reliable — including on mobile, which is the
+case most likely to trigger it (responsive sites commonly swap or hide DOM between breakpoints).
+
+- [x] Remove freehand drawing (canvas overlay, SVG-persisted strokes, Ctrl+Z undo)
+- [x] Remove text highlighting (selection capture, highlight rects, sidebar snippet)
+- [x] Remove the now-meaningless sidebar type filter and drawing/highlight badges
+- [x] Fix: `resolveAnchor` no longer snaps a pin to the scroll origin when its anchored element is
+      hidden or collapsed to zero size at the current viewport (e.g. a responsive block that's
+      `display:none` at this breakpoint) — it keeps the last known position and marks the pin
+      `pd-pin-approx` (dashed outline) with an "Approx." badge in the sidebar instead of asserting
+      a wrong one
+- [x] Repositioning no longer waits solely on the `resize` event — a debounced `ResizeObserver` on
+      the document plus an `orientationchange` listener catch reflow that isn't a literal window
+      resize (a lazy image finishing load, a font swap, an accordion opening)
+- [x] Pin tool button now toggles on/off (previously one of three tool buttons; now the only one)
+- [ ] **Known remaining limitation, not fixed here**: the percentage-in-box offset assumes the
+      anchored element scales roughly proportionally. A large viewport jump (desktop → phone) that
+      changes an element's aspect ratio a lot — e.g. a paragraph that wraps from 3 lines to 10 —
+      can still land the pin somewhere plausible-looking but not exactly where it was dropped, even
+      though the element itself resolved fine (`resolved: true`, no approx flag). Anchoring to a
+      smaller unit than "whichever element was clicked" (e.g. the nearest text node) would narrow
+      this further; scoped as a future improvement, not attempted in this pass.
 
 ---
 

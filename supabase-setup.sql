@@ -3,22 +3,25 @@
 --   Dashboard → SQL Editor → New query → paste → Run
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- As of v0.9.3, Pindrop only creates 'pin' annotations (drawing/highlight were
+-- removed — see ROADMAP.md). This constraint only applies to *new* installs
+-- (create table if not exists won't touch a table that already exists) — if
+-- you're running this against a project that already has drawing/highlight
+-- rows from an earlier version, do NOT re-run this file expecting it to
+-- migrate or clean those up; that needs a deliberate, separate migration.
 create table if not exists pindrop_annotations (
   id           uuid        primary key default gen_random_uuid(),
   page_url     text        not null,
-  type         text        not null check (type in ('pin', 'drawing', 'highlight')),
+  type         text        not null check (type in ('pin')),
 
   -- Pin fields
   x_doc        float8,           -- absolute X from left of document (px)
   y_doc        float8,           -- absolute Y from top of document (px)
   color        text,             -- hex colour
 
-  -- Element anchor (pins) — repositions across screen sizes
+  -- Element anchor — repositions as the layout reflows (resize, rotation,
+  -- content changes); see resolveAnchor() in pindrop.js
   anchor       jsonb,            -- { selector, offset_x_pct, offset_y_pct }
-
-  -- Drawing / highlight fields
-  paths        jsonb,            -- drawings: [{points:[{x,y}…], color, width}]
-                                 -- highlights: [{x,y,w,h,sel?}…]
 
   -- Common
   comment         text,
