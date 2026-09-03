@@ -43,7 +43,7 @@ In Supabase: **Settings → API**
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/gh/kalebheitzman/pindrop@0.9.3/pindrop.min.js"
+  src="https://cdn.jsdelivr.net/gh/kalebheitzman/pindrop@0.9.4/pindrop.min.js"
   data-supabase-url="https://YOUR_PROJECT_ID.supabase.co"
   data-supabase-key="eyJ..."
   defer

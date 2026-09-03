@@ -186,6 +186,32 @@ case most likely to trigger it (responsive sites commonly swap or hide DOM betwe
 
 ---
 
+## v0.9.4 — Selector-Escaping Fix ✓
+
+Testing v0.9.3 against a real page turned up a bigger bug than the one it fixed: `getSelectorPath`
+built its CSS selector out of raw class names, and Tailwind routinely puts characters into class
+names that are meaningful in CSS selector syntax — `:` for variants (`lg:flex-1`), `[...]` for
+arbitrary values (`leading-[1.02]`). Used unescaped in a selector string, `document.querySelector`
+throws a `SyntaxError` on them. `resolveAnchor` was already catching that and falling back to the
+pin's raw creation-time pixel coordinates — so any pin anchored on or under an element carrying one
+of these classes never resolved its anchor at all, on any viewport, from the moment it was created.
+It only ever looked right by coincidence, at the exact screen size it was dropped at. On a page
+built entirely in Tailwind (this one), that's most pins, not an edge case — which is what v0.9.3's
+zero-rect guard couldn't have caught, since the selector was throwing, not resolving to a
+collapsed/hidden element.
+
+- [x] Fix: `getSelectorPath` now runs every class name and id segment through `CSS.escape()` before
+      building the selector string, so Tailwind variant/arbitrary-value classes (`lg:flex-1`,
+      `leading-[1.02]`, `w-1/2`, etc.) no longer break selector matching
+- [x] Verified against a real pin anchored inside this site's hero `<h1>` (a `leading-[1.02]` /
+      `lg:flex-1` ancestor chain) — selector now resolves correctly instead of throwing
+- [ ] **Not fixed by this release**: annotations already stored with a pre-v0.9.4 selector still
+      carry the broken, unescaped string — this fix only prevents *new* selectors from being
+      malformed. Existing pins on real class names with `:` or `[...]` need to be deleted and
+      re-dropped after upgrading; there's no in-place migration for a stored selector string.
+
+---
+
 ## v1.0.0 — Production Ready
 
 - [ ] Export annotations as CSV (download all open/resolved annotations with author, page, comment, timestamp)

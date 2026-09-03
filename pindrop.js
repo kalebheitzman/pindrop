@@ -1,5 +1,5 @@
 /**
- * Pindrop v0.9.3 — drop-in design annotation tool
+ * Pindrop v0.9.4 — drop-in design annotation tool
  * Pins · Threaded comments
  * Backed by Supabase (free tier works great).
  * License: MIT + Commons Clause (free to use, not for resale)
@@ -1598,6 +1598,25 @@ body.pd-pin-cursor, body.pd-pin-cursor * { cursor: crosshair !important; }\
   // ─── ELEMENT ANCHORING ────────────────────────────────────────────────────
 
   /**
+   * Escape a string for use as a literal CSS identifier (class name or id)
+   * inside a selector. Utility-CSS frameworks like Tailwind routinely put
+   * characters that are meaningful in CSS selector syntax — `:` for variants
+   * (`lg:flex-1`), `[...]` for arbitrary values (`leading-[1.02]`), `/` and
+   * `.` for fractional/decimal values (`w-1/2`, `opacity-0.5`) — directly
+   * into class names. Those are perfectly valid class *names*, but used
+   * unescaped in a selector string they either change its meaning (`:` reads
+   * as a pseudo-class) or make it outright invalid (`document.querySelector`
+   * throws a SyntaxError). Previously getSelectorPath used class names as-is,
+   * so any pin anchored on or under an element carrying one of these classes
+   * produced a selector that threw every time it was resolved — permanently
+   * falling back to raw pixel coordinates, not just after a resize.
+   */
+  function cssEscape(s) {
+    if (window.CSS && CSS.escape) return CSS.escape(s);
+    return String(s).replace(/([^a-zA-Z0-9_-])/g, '\\$1'); // defensive fallback for very old browsers
+  }
+
+  /**
    * Walk up the DOM from el, building a CSS selector path.
    * Stops at the first ancestor with an id (uses #id as the root).
    * Adds class names and nth-of-type to disambiguate siblings.
@@ -1613,14 +1632,14 @@ body.pd-pin-cursor, body.pd-pin-cursor * { cursor: crosshair !important; }\
       if (node.id && /^pd-/.test(node.id)) return null;
       var tag = node.tagName.toLowerCase();
       if (node.id && !/^pd-/.test(node.id)) {
-        parts.unshift('#' + node.id);
+        parts.unshift('#' + cssEscape(node.id));
         break;  // id is unique — stop here
       }
       // Build class segment (up to 2 stable classes)
       var classes = [];
       for (var i = 0; i < node.classList.length && classes.length < 2; i++) {
         var c = node.classList[i];
-        if (!/^pd-/.test(c)) classes.push(c);
+        if (!/^pd-/.test(c)) classes.push(cssEscape(c));
       }
       var seg = tag + (classes.length ? '.' + classes.join('.') : '');
       // Add nth-of-type to disambiguate siblings with the same tag
