@@ -1,5 +1,5 @@
 /**
- * Pindrop v0.9.5 — drop-in design annotation tool
+ * Pindrop v0.9.6 — drop-in design annotation tool
  * Pins · Threaded comments
  * Backed by Supabase (free tier works great).
  * License: MIT + Commons Clause (free to use, not for resale)
@@ -399,6 +399,8 @@
 .pd-act-delete { margin-left: auto; }\
 .pd-act-delete:hover { border-color: #ef4444 !important; color: #ef4444 !important; }\
 .pd-card.pd-card-resolved { opacity: 0.6; }\
+.pd-pin.pd-pin-resolved { display: none; }\
+.pd-pin.pd-pin-resolved.pd-pin-focused { display: block; opacity: .6; }\
 .pd-card.pd-card-focused {\
   border-color: #4f46e5 !important;\
   box-shadow: 0 0 0 2px #4f46e5, 0 4px 16px rgba(79,70,229,.15);\
@@ -760,7 +762,9 @@ body.pd-pin-cursor, body.pd-pin-cursor * { cursor: crosshair !important; }\
     var title = (ann.author_name || 'Anonymous') + ': ' + (ann.comment || '(no comment)');
     pin.title = pos.resolved ? title
       : title + ' (position approximate — the marked content is hidden or has moved at this screen size)';
-    if (ann.resolved) pin.style.opacity = '0.4';
+    // Resolved pins are hidden on the page (they stay in the sidebar list);
+    // focusing a resolved card in the sidebar reveals its pin temporarily.
+    pin.classList.toggle('pd-pin-resolved', !!ann.resolved);
     pin.addEventListener('click', function (e) {
       e.stopPropagation();
       openSidebarTo(ann.id);
@@ -1217,6 +1221,7 @@ body.pd-pin-cursor, body.pd-pin-cursor * { cursor: crosshair !important; }\
     // Dim all pins
     document.querySelectorAll('.pd-pin').forEach(function (el) {
       el.style.opacity = el.dataset.id === annId ? '' : '0.1';
+      el.classList.toggle('pd-pin-focused', el.dataset.id === annId);
     });
     // Focus the sidebar card
     document.querySelectorAll('.pd-card').forEach(function (card) {
@@ -1228,8 +1233,8 @@ body.pd-pin-cursor, body.pd-pin-cursor * { cursor: crosshair !important; }\
     activeAnnId = null;
     // Restore annotation opacities (respecting resolved state)
     document.querySelectorAll('.pd-pin').forEach(function (el) {
-      var ann = annotations.find(function (a) { return a.id === el.dataset.id; });
-      el.style.opacity = (ann && ann.resolved) ? '0.4' : '';
+      el.style.opacity = '';
+      el.classList.remove('pd-pin-focused');
     });
     // Clear focused card
     document.querySelectorAll('.pd-card-focused').forEach(function (card) {
@@ -1486,7 +1491,7 @@ body.pd-pin-cursor, body.pd-pin-cursor * { cursor: crosshair !important; }\
       else card.classList.remove('pd-collapsed');
       // Update pin opacity
       var pin = document.querySelector('.pd-pin[data-id="' + ann.id + '"]');
-      if (pin) pin.style.opacity = newState ? '0.4' : '';
+      if (pin) { pin.style.opacity = ''; pin.classList.toggle('pd-pin-resolved', newState); }
     });
   }
 
